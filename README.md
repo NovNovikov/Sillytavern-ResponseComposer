@@ -65,7 +65,7 @@ These fields intentionally have separate jobs:
 - **Connection Profile** selects API source, endpoint, model, credentials and the profile's generation preset. Its preset supplies request settings, including Custom endpoint **Additional Parameters** such as `chat_template_kwargs`.
 - **Prompt OAI Preset** selects Prompt Manager composition for the auxiliary request: prompt order, Character/Persona/Personality/Scenario, World Info and checkpoint entries. It does not replace the profile's request settings.
 
-With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options under **Add additional instructions** control whether Persona Description, Char Description, Char Personality, Scenario, Worldbook and Summarized Checkpoints are inserted. **Empty Preset: last chat messages** limits the manually assembled history to its last `N` messages; `0` includes the full chat history. Connection Profile request parameters still apply.
+With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options under **Add additional instructions** control whether Persona Description, Char Description, Char Personality, Scenario, Worldbook and Summarized Checkpoints are inserted. The Summarized Checkpoints option is shown only while the Checkpoint Summarize extension is installed and enabled. **Empty Preset: last chat messages** limits the manually assembled history to its last `N` messages; `0` includes the full chat history. Connection Profile request parameters still apply.
 
 ### Output and conditions
 

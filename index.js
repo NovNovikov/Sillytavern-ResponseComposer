@@ -7,7 +7,7 @@ import {
     registerGenerationFinalizer,
     saveSettingsDebounced,
 } from '../../../../script.js';
-import { extension_settings, getContext } from '../../../extensions.js';
+import { extension_settings, extensionNames, getContext } from '../../../extensions.js';
 import { Popup } from '../../../popup.js';
 import { removeReasoningFromString } from '../../../reasoning.js';
 import { getWorldInfoPrompt } from '../../../world-info.js';
@@ -45,6 +45,11 @@ function newAdditionalInstructions() {
         includeCheckpoints: false,
         postHistory: '',
     };
+}
+
+function isCheckpointSummarizeAvailable() {
+    const extensionId = extensionNames.find(name => name.toLowerCase().replaceAll(/[^a-z0-9]/g, '').includes('checkpointsummarize'));
+    return Boolean(extensionId && !extension_settings.disabledExtensions?.includes(extensionId));
 }
 
 function newBlock(position = 'pre') {
@@ -224,6 +229,7 @@ function renderBlock(block, isOpen = false) {
     const isStatic = isStaticBlock(block);
     const runCondition = getRunCondition(block);
     const isEmptyPreset = block.oaiPresetId === EMPTY_PRESET;
+    const hasCheckpointSummarize = isCheckpointSummarizeAvailable();
     return `
         <details class="stmc-block${isEnabled ? '' : ' stmc-block-disabled'}" data-block-id="${escapeHtml(block.id)}"${isOpen ? ' open' : ''}>
             <summary>
@@ -273,7 +279,7 @@ function renderBlock(block, isOpen = false) {
                     <div class="stmc-options"${isEmptyPreset ? '' : ' hidden'}>
                         <label><input type="checkbox" data-field="additionalInstructions.includeCharacter"${instructions.includeCharacter ? ' checked' : ''}> Persona, Character Description, Personality & Scenario</label>
                         <label><input type="checkbox" data-field="additionalInstructions.includeWorldbook"${instructions.includeWorldbook ? ' checked' : ''}> Worldbook</label>
-                        <label><input type="checkbox" data-field="additionalInstructions.includeCheckpoints"${instructions.includeCheckpoints ? ' checked' : ''}> Summarized Checkpoints</label>
+                        <label${hasCheckpointSummarize ? '' : ' hidden'}><input type="checkbox" data-field="additionalInstructions.includeCheckpoints"${instructions.includeCheckpoints ? ' checked' : ''}> Summarized Checkpoints</label>
                     </div>
                     <p class="stmc-hint"${isEmptyPreset ? ' hidden' : ''}>Character, World Info, checkpoints, and prompt order are taken from the selected OAI preset's Prompt Manager.</p>
                     <label class="stmc-field"><span>Post-History Instruction</span><textarea class="text_pole" data-field="additionalInstructions.postHistory">${escapeHtml(instructions.postHistory)}</textarea></label>
