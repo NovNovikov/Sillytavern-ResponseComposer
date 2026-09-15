@@ -825,6 +825,41 @@ async function buildAuxiliaryPrompt(run, block, entries, context, profile) {
     return [supplementaryInstruction, history].filter(Boolean).join('\n\n');
 }
 
+function getPromptRegexPlacement(message) {
+    return message?.role === 'assistant'
+        ? regex_placement.AI_OUTPUT
+        : regex_placement.USER_INPUT;
+}
+
+function processPromptContent(content, placement) {
+    if (typeof content === 'string') {
+        return getRegexedString(content, placement, { isPrompt: true });
+    }
+    if (!Array.isArray(content)) return content;
+    return content.map(part => {
+        if (!part || typeof part !== 'object' || typeof part.text !== 'string') return part;
+        return {
+            ...part,
+            text: getRegexedString(part.text, placement, { isPrompt: true }),
+        };
+    });
+}
+
+function processBlockPrompt(run, block, prompt) {
+    if (!(run.presetSnapshot.useRegex && block.regex?.applySillyTavernRegex)) return prompt;
+    if (typeof prompt === 'string') {
+        return getRegexedString(prompt, regex_placement.USER_INPUT, { isPrompt: true });
+    }
+    if (!Array.isArray(prompt)) return prompt;
+    return prompt.map(message => {
+        if (!message || typeof message !== 'object') return message;
+        return {
+            ...message,
+            content: processPromptContent(message.content, getPromptRegexPlacement(message)),
+        };
+    });
+}
+
 function processBlockOutput(run, block, rawOutput) {
     let output = removeReasoningFromString(String(rawOutput ?? '')).trim();
     const afterReasoningLength = output.length;
@@ -868,7 +903,14 @@ async function generateBlock(run, block, entries) {
         const auxiliaryEntries = run.pendingUserText
             ? [...entries, { name: 'Pending User Message', output: run.pendingUserText, propagate: true }]
             : entries;
-        const prompt = await buildAuxiliaryPrompt(run, block, auxiliaryEntries, context, profile);
+        const rawPrompt = await buildAuxiliaryPrompt(run, block, auxiliaryEntries, context, profile);
+        const prompt = processBlockPrompt(run, block, rawPrompt);
+        tracePipeline(run, 'auxiliary-prompt-processed', {
+            position: block.position,
+            regexApplied: Boolean(run.presetSnapshot.useRegex && block.regex?.applySillyTavernRegex),
+            promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
+            ...getChatDiagnostics(),
+        });
         // generateQuietPrompt() re-enters Generate(), which owns the active chat,
         // input field and streaming UI. Auxiliary stages must never take ownership
         // of those objects. Do not switch the connection-profile or preset UI here:
