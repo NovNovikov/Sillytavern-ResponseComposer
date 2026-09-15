@@ -917,7 +917,9 @@ async function generateBlock(run, block, entries) {
             apiType: profile?.type ?? context.mainApi,
             promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
             usesPromptManager: block.oaiPresetId !== EMPTY_PRESET,
-            serverTemplateEligible: profile?.type === 'openai' && Array.isArray(prompt),
+            // Connection Manager wraps a string in a user message for Chat
+            // Completion, so both prompt shapes reach the server as messages.
+            serverRequestShape: profile?.type === 'openai' ? 'messages' : 'prompt',
             ...getChatDiagnostics(),
         });
         // generateQuietPrompt() re-enters Generate(), which owns the active chat,
@@ -1128,7 +1130,18 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
         tracePipeline(run, 'block-complete', { position: block.position, skipped, outputLength: output.length, ...getChatDiagnostics() });
         return record;
     }
-    const source = allowSwipeReuse && block.keepOnSwipe ? findSourceBlock(run, block) : null;
+    const sourceBlock = allowSwipeReuse ? findSourceBlock(run, block) : null;
+    if (allowSwipeReuse) {
+        tracePipeline(run, 'block-reuse-check', {
+            position: block.position,
+            keepOnSwipe: Boolean(block.keepOnSwipe),
+            sourceFound: Boolean(sourceBlock),
+            sourceHasStoredOutput: typeof sourceBlock?.output === 'string',
+            sourceVisibility: sourceBlock?.visibility ?? null,
+            ...getChatDiagnostics(),
+        });
+    }
+    const source = block.keepOnSwipe ? sourceBlock : null;
     if (source && typeof source.output === 'string') {
         const record = createPersistedBlock(block, source.output, true);
         run.records.push(record);
