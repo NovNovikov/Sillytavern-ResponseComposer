@@ -754,6 +754,23 @@ async function getWorldbookText(context) {
 
 async function buildEmptyPresetPrompt(run, block, entries, context) {
     const instructions = block.additionalInstructions ?? newAdditionalInstructions();
+    const parts = [
+        ...getEmptyPresetContextParts(block, context),
+        ...await getEmptyPresetWorldbookParts(block, context),
+        ...getEmptyPresetCheckpointParts(block),
+    ];
+    const history = getEmptyPresetHistory(block, context)
+        .map(message => `${message.is_user ? context.name1 : (message.name || context.name2)}: ${String(message.mes ?? '')}`)
+        .join('\n\n');
+    if (history) parts.push(history);
+    const pipelineContext = formatPipelineContext(entries);
+    if (pipelineContext) parts.push(pipelineContext);
+    if (instructions.enabled && instructions.postHistory.trim()) parts.push(instructions.postHistory.trim());
+    return parts.join('\n\n');
+}
+
+function getEmptyPresetContextParts(block, context) {
+    const instructions = block.additionalInstructions ?? newAdditionalInstructions();
     const parts = [];
     if (instructions.enabled && instructions.beginning.trim()) parts.push(instructions.beginning.trim());
     if (instructions.enabled && instructions.includeCharacter) {
@@ -763,26 +780,54 @@ async function buildEmptyPresetPrompt(run, block, entries, context) {
             .filter(Boolean);
         if (characterParts.length) parts.push(characterParts.join('\n\n'));
     }
-    if (instructions.enabled && instructions.includeWorldbook) {
-        const worldbook = await getWorldbookText(context);
-        if (worldbook) parts.push(worldbook);
-    }
-    if (instructions.enabled && instructions.includeCheckpoints) {
-        const checkpoints = getCheckpointText();
-        if (checkpoints) parts.push(checkpoints);
-    }
+    return parts;
+}
+
+async function getEmptyPresetWorldbookParts(block, context) {
+    const instructions = block.additionalInstructions ?? newAdditionalInstructions();
+    if (!(instructions.enabled && instructions.includeWorldbook)) return [];
+    const worldbook = await getWorldbookText(context);
+    return worldbook ? [worldbook] : [];
+}
+
+function getEmptyPresetCheckpointParts(block) {
+    const instructions = block.additionalInstructions ?? newAdditionalInstructions();
+    if (!(instructions.enabled && instructions.includeCheckpoints)) return [];
+    const checkpoints = getCheckpointText();
+    return checkpoints ? [checkpoints] : [];
+}
+
+function getEmptyPresetHistory(block, context) {
     const historyLimit = Math.max(0, Math.floor(Number(block.emptyHistoryMessageLimit) || 0));
-    const historyMessages = (context.chat ?? [])
-        .filter(message => !message?.is_system)
-    const selectedHistory = historyLimit > 0 ? historyMessages.slice(-historyLimit) : historyMessages;
-    const history = selectedHistory
-        .map(message => `${message.is_user ? context.name1 : (message.name || context.name2)}: ${String(message.mes ?? '')}`)
-        .join('\n\n');
-    if (history) parts.push(history);
+    const historyMessages = (context.chat ?? []).filter(message => !message?.is_system);
+    return historyLimit > 0 ? historyMessages.slice(-historyLimit) : historyMessages;
+}
+
+async function buildEmptyPresetMessages(run, block, entries, context) {
+    const instructions = block.additionalInstructions ?? newAdditionalInstructions();
+    const messages = [];
+    const leadingContext = [
+        ...getEmptyPresetContextParts(block, context),
+        ...await getEmptyPresetWorldbookParts(block, context),
+        ...getEmptyPresetCheckpointParts(block),
+    ];
+    for (const content of leadingContext) {
+        messages.push({ role: 'system', content });
+    }
+    for (const message of getEmptyPresetHistory(block, context)) {
+        const role = message.is_user ? 'user' : 'assistant';
+        const converted = { role, content: String(message.mes ?? '') };
+        if (!message.is_user && message.name && message.name !== context.name2) {
+            converted.name = message.name;
+        }
+        messages.push(converted);
+    }
     const pipelineContext = formatPipelineContext(entries);
-    if (pipelineContext) parts.push(pipelineContext);
-    if (instructions.enabled && instructions.postHistory.trim()) parts.push(instructions.postHistory.trim());
-    return parts.join('\n\n');
+    if (pipelineContext) messages.push({ role: 'system', content: pipelineContext });
+    if (instructions.enabled && instructions.postHistory.trim()) {
+        messages.push({ role: 'system', content: instructions.postHistory.trim() });
+    }
+    return messages;
 }
 
 function resolveAuxiliaryProfile(context, block) {
@@ -810,6 +855,10 @@ async function buildAuxiliaryPrompt(run, block, entries, context, profile) {
             supplementaryInstruction,
             type: run.type,
         });
+    }
+
+    if (block.oaiPresetId === EMPTY_PRESET && profile?.type === 'openai') {
+        return await buildEmptyPresetMessages(run, block, entries, context);
     }
 
     if (block.oaiPresetId === EMPTY_PRESET) {
