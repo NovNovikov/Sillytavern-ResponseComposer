@@ -25,15 +25,19 @@ PRE blocks → MAIN → POST blocks → one saved assistant message
 
 This extension requires the accompanying SillyTavern core hooks. Vanilla SillyTavern does not currently provide the generation-finalizer and Prompt Manager APIs used here.
 
-The required core commits are supplied in [`patches/`](patches). They were created against the `release` checkout whose base commit is `9d7e6ab64`.
+The required core commits are bundled with the extension. They were created against the `release` checkout whose base commit is `9d7e6ab64`.
 
-From the root of that SillyTavern checkout, apply them in order:
+### One-click core installation
+
+Double-click [`Install-Core-Hooks.cmd`](Install-Core-Hooks.cmd), choose the SillyTavern source directory (the folder containing `.git` and `public\script.js`), and let it complete. It applies the bundled hooks in the required order.
+
+The installer checks whether the hooks already exist and exits without changing the checkout in that case. It also refuses a checkout with uncommitted changes, checks for an existing rebase, and aborts its own failed patch attempt. Git for Windows is required.
+
+For unattended use, pass the checkout path explicitly:
 
 ```powershell
-git am --3way path\to\st-message-constructor\patches\*.patch
+.\Install-Core-Hooks.ps1 -SillyTavernPath 'L:\path\to\SillyTavern'
 ```
-
-If your fork already contains the corresponding changes, do not apply the patch series again. `git am --abort` cancels the operation if a conflict needs manual resolution.
 
 The Connection Manager extension is needed for a block that selects a Connection Profile. A block can otherwise fall back to the currently selected Chat Completion connection.
 
