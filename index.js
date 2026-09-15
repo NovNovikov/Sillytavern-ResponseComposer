@@ -963,6 +963,19 @@ function addMainPreviewToChat(run, context) {
     };
 }
 
+function temporarilyRemoveRegeneratedMessage(run, context) {
+    // GENERATION_BEFORE_MAIN for Regenerate runs before core removes the old
+    // assistant reply. Remove it while PRE or a prompt preview is running so
+    // both receive the same history as the real MAIN request.
+    if (run.type !== 'regenerate' || run.mainPromptPreview || !Array.isArray(context.chat)) return () => { };
+    const chat = context.chat;
+    const index = chat.length - 1;
+    const message = chat[index];
+    if (!message || message.is_user) return () => { };
+    chat.splice(index, 1);
+    return () => chat.splice(Math.min(index, chat.length), 0, message);
+}
+
 /**
  * Builds the prompt through Tavern's dry-run generation path. This is the same
  * Prompt Manager, World Info and history assembly used by MAIN, without making
@@ -981,6 +994,7 @@ async function getCurrentMainPromptText(run) {
 
     const previewEntries = getPromptPreviewEntries(run);
     const removeMainPreview = addMainPreviewToChat(run, context);
+    const restoreRegeneratedMessage = temporarilyRemoveRegeneratedMessage(run, context);
     setPipelineContext(previewEntries);
     eventSource.once(event_types.GENERATE_AFTER_DATA, capturePrompt);
     try {
@@ -995,6 +1009,7 @@ async function getCurrentMainPromptText(run) {
         return promptText;
     } finally {
         eventSource.removeListener(event_types.GENERATE_AFTER_DATA, capturePrompt);
+        restoreRegeneratedMessage();
         removeMainPreview();
         setPipelineContext(run.propagated);
     }
@@ -1238,11 +1253,20 @@ async function prepareRun(type, options, dryRun) {
             message.mes = main;
         }
         await applyMainState(run);
-        // Static PRE conditions can preview the actual MAIN prompt. Apply the
-        // selected MAIN connection state first, then refresh pipeline context
-        // after PRE has produced its propagated entries.
-        await executePreBlocks(run);
-        setPipelineContext(run.propagated);
+        // Core deletes the old assistant message for Regenerate only after this
+        // hook returns. PRE must nevertheless see the same history as the new
+        // MAIN request, so remove it temporarily and restore it for core to
+        // perform its normal replacement.
+        const restoreRegeneratedMessage = temporarilyRemoveRegeneratedMessage(run, getContext());
+        try {
+            // Static PRE conditions can preview the actual MAIN prompt. Apply
+            // the selected MAIN connection state first, then refresh pipeline
+            // context after PRE has produced its propagated entries.
+            await executePreBlocks(run);
+            setPipelineContext(run.propagated);
+        } finally {
+            restoreRegeneratedMessage();
+        }
         tracePipeline(run, 'pre-complete', { ...getChatDiagnostics() });
         tracePipeline(run, 'main-context-ready', { ...getChatDiagnostics() });
     } catch (error) {
