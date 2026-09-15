@@ -228,6 +228,7 @@ function renderBlock(block, isOpen = false) {
     const isDiscard = block.visibility === 'discard';
     const isEnabled = block.enabled !== false;
     const isStatic = isStaticBlock(block);
+    const isPresetRegexEnabled = getActivePreset()?.useRegex !== false;
     const runCondition = getRunCondition(block);
     const isEmptyPreset = block.oaiPresetId === EMPTY_PRESET;
     const hasCheckpointSummarize = isCheckpointSummarizeAvailable();
@@ -265,7 +266,7 @@ function renderBlock(block, isOpen = false) {
                     <label><input type="checkbox" data-field="propagate"${block.propagate ? ' checked' : ''}> Show result to subsequent blocks</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="keepOnSwipe"${block.keepOnSwipe ? ' checked' : ''}${isDiscard ? ' disabled' : ''}> Do not regenerate on Swipe</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="additionalInstructions.enabled"${instructions.enabled ? ' checked' : ''}> Add additional instructions</label>
-                    <label><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> Apply SillyTavern Regex</label>
+                    <label${isPresetRegexEnabled ? '' : ' hidden'}><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> Apply SillyTavern Regex</label>
                 </div>
                 <div class="stmc-static-fields"${isStatic ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Text</span><textarea class="text_pole" data-field="staticText">${escapeHtml(block.staticText ?? '')}</textarea></label>
@@ -430,6 +431,7 @@ function bindEvents() {
     panel.querySelector('#stmc-use-regex').addEventListener('input', event => {
         getActivePreset().useRegex = event.target.checked;
         saveSettings();
+        renderPipeline();
     });
     panel.querySelector('#stmc-preset').addEventListener('change', event => {
         getSettings().activePresetId = event.target.value;
