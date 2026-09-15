@@ -19,6 +19,7 @@ PRE blocks → MAIN → POST blocks → one saved assistant message
 - Swipe, regenerate and continue support. A block can be kept on a swipe; its current switch setting controls the next swipe while the source swipe supplies the stored output.
 - Only MAIN reasoning is retained as normal reasoning. Auxiliary reasoning is discarded.
 - Hidden stage data and assembly data are kept per swipe in message metadata; discarded output is not saved.
+- A failed auxiliary block is omitted and later blocks continue. Stopping the generation still stops the whole pipeline.
 - Abort and finalizer failures use Tavern's normal generation cleanup path.
 
 ## Requirements

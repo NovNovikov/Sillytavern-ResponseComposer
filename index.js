@@ -676,7 +676,7 @@ async function restoreTavernState(snapshot) {
     }
 }
 
-function createPersistedBlock(block, output, reusedOnSwipe, skipped = false) {
+function createPersistedBlock(block, output, reusedOnSwipe, skipped = false, failed = false) {
     return {
         id: block.id,
         name: block.name,
@@ -686,6 +686,7 @@ function createPersistedBlock(block, output, reusedOnSwipe, skipped = false) {
         propagate: !!block.propagate,
         reusedOnSwipe: !!reusedOnSwipe,
         skipped: !!skipped,
+        failed: !!failed,
         output,
     };
 }
@@ -1243,12 +1244,13 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
             snapshotKeepOnSwipe: Boolean(block.keepOnSwipe),
             sourceFound: Boolean(sourceBlock),
             sourceHasStoredOutput: typeof sourceBlock?.output === 'string',
+            sourceFailed: Boolean(sourceBlock?.failed),
             sourceVisibility: sourceBlock?.visibility ?? null,
             ...getChatDiagnostics(),
         });
     }
     const source = keepOnSwipe ? sourceBlock : null;
-    if (source && typeof source.output === 'string') {
+    if (source && !source.failed && typeof source.output === 'string') {
         const record = createPersistedBlock(block, source.output, true);
         run.records.push(record);
         if (record.propagate) run.propagated.push(record);
@@ -1264,11 +1266,35 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     return record;
 }
 
+async function executeBlockSafely(run, block, options = {}) {
+    try {
+        return await executeBlock(run, block, options);
+    } catch (error) {
+        if (isAbortError(error)) throw error;
+
+        const record = createPersistedBlock(block, '', false, true, true);
+        run.records.push(record);
+        tracePipeline(run, 'block-failed', {
+            position: block.position,
+            blockType: record.type,
+            ...getErrorDiagnostics(error),
+            ...getChatDiagnostics(),
+        });
+        return record;
+    }
+}
+
 async function executePreBlocks(run) {
     const blocks = run.presetSnapshot.blocks.filter(block => block.position === 'pre' && block.enabled !== false);
     if (run.type === 'continue') {
         for (const block of blocks) {
             const source = findSourceBlock(run, block);
+            if (source?.failed) {
+                const record = createPersistedBlock(block, '', false, true, true);
+                run.records.push(record);
+                tracePipeline(run, 'block-skipped-after-failure', { position: block.position, ...getChatDiagnostics() });
+                continue;
+            }
             if (typeof source?.output !== 'string') {
                 if (block.visibility === 'discard' && block.propagate) {
                     throw new Error(`Continue cannot reuse PRE block \"${block.name}\": its propagated output was discarded by design.`);
@@ -1283,7 +1309,7 @@ async function executePreBlocks(run) {
         return;
     }
     for (const block of blocks) {
-        await executeBlock(run, block, { allowSwipeReuse: run.type === 'swipe' });
+        await executeBlockSafely(run, block, { allowSwipeReuse: run.type === 'swipe' });
     }
 }
 
@@ -1365,7 +1391,7 @@ async function finalizeRun(context) {
         };
         run.propagated = postEntries;
         for (const block of run.presetSnapshot.blocks.filter(block => block.position === 'post' && block.enabled !== false)) {
-            await executeBlock(run, block, { allowSwipeReuse: run.type === 'swipe' });
+            await executeBlockSafely(run, block, { allowSwipeReuse: run.type === 'swipe' });
         }
         const result = buildPipelineFinalization(run, main);
         tracePipeline(run, 'finalizer-return', { outputLength: result.text.length, ...getChatDiagnostics(context.messageId) });
