@@ -1,0 +1,40 @@
+From e0cb2b76c5198e3161967792d3cfa473528a364c Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 22:42:17 +0200
+Subject: [PATCH] fix: exclude hidden messages from auxiliary prompts
+
+---
+ public/script.js | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/public/script.js b/public/script.js
+index 3a6cbda42..1b91da5d8 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -6362,7 +6362,13 @@ export async function prepareChatCompletionMessages({ messages = chat, presetNam
+     return await withChatCompletionPreset(presetName, async () => {
+         const fields = getCharacterCardFields();
+         const history = Array.isArray(messages) ? messages : chat;
+-        const worldInfoChat = history
++        // Match MAIN generation: messages hidden with /hide must not reappear
++        // in an auxiliary Prompt Manager request. Tool invocation records are
++        // the one intentional exception because their paired tool result is
++        // required by APIs that support tool calling.
++        const canUseTools = ToolManager.isToolCallingSupported();
++        const promptHistory = history.filter(message => !message?.is_system || (canUseTools && Array.isArray(message.extra?.tool_invocations)));
++        const worldInfoChat = promptHistory
+             .filter(message => !message?.is_system)
+             .map(message => world_info_include_names ? `${message.name}: ${message.mes}` : message.mes)
+             .reverse();
+@@ -6390,7 +6396,7 @@ export async function prepareChatCompletionMessages({ messages = chat, presetNam
+             cyclePrompt: '',
+             systemPromptOverride: fields.system,
+             jailbreakPromptOverride: fields.jailbreak,
+-            messages: setOpenAIMessages(history),
++            messages: setOpenAIMessages(promptHistory),
+             messageExamples: setOpenAIMessageExamples(parseMesExamples(fields.mesExamples, false)),
+         // Prompt composition must not re-render Prompt Manager while a block is
+         // running with another preset's temporary in-memory settings.
+-- 
+2.46.2.windows.1
+

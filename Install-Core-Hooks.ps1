@@ -31,7 +31,7 @@ function Select-SillyTavernRoot {
     return $dialog.SelectedPath
 }
 
-function Test-CoreHooksInstalled {
+function Test-CoreBaseHooksInstalled {
     param([string]$Root)
 
     $script = Get-Content (Join-Path $Root 'public\script.js') -Raw
@@ -40,6 +40,17 @@ function Test-CoreHooksInstalled {
     return $script.Contains('registerGenerationFinalizer') -and
         $script.Contains('prepareChatCompletionMessages') -and
         $context.Contains('prepareChatCompletionMessages')
+}
+
+function Test-CoreHooksInstalled {
+    param([string]$Root)
+
+    if (-not (Test-CoreBaseHooksInstalled $Root)) {
+        return $false
+    }
+
+    $script = Get-Content (Join-Path $Root 'public\script.js') -Raw
+    return $script.Contains('const promptHistory = history.filter(message => !message?.is_system || (canUseTools && Array.isArray(message.extra?.tool_invocations)));')
 }
 
 try {
@@ -64,6 +75,16 @@ try {
     $patches = @(Get-ChildItem $patchDirectory -Filter '*.patch' -File | Sort-Object Name)
     if ($patches.Count -eq 0) {
         throw 'The bundled core patch series is missing.'
+    }
+
+    # A checkout with the original hook series only needs the incremental
+    # update. Reapplying the whole series would make git am reject commits
+    # that are already present.
+    if (Test-CoreBaseHooksInstalled $SillyTavernPath) {
+        $patches = @($patches | Where-Object { $_.Name -like '0011-*' })
+    }
+    if ($patches.Count -eq 0) {
+        throw 'No applicable core patch was found for this checkout.'
     }
 
     $status = & git -C $SillyTavernPath status --porcelain
