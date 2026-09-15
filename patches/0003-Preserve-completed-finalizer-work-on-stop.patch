@@ -1,0 +1,40 @@
+From 7497199e5f81f114de362adfddc02529615bb3d1 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 02:21:36 +0200
+Subject: [PATCH 03/10] Preserve completed finalizer work on stop
+
+
+diff --git a/public/script.js b/public/script.js
+index 112a9b777..018f75eac 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -748,11 +748,10 @@ async function runGenerationFinalizers(context) {
+             throw createGenerationFinalizerError(error);
+         }
+ 
+-        if (context.abortSignal?.aborted) {
+-            throw createGenerationFinalizerError(new DOMException('Generation was aborted.', 'AbortError'));
+-        }
+-
+         if (result === undefined || result === null) {
++            if (context.abortSignal?.aborted) {
++                return { text, extraPatch };
++            }
+             continue;
+         }
+         if (!isPlainObject(result)) {
+@@ -771,6 +770,11 @@ async function runGenerationFinalizers(context) {
+                 throw createGenerationFinalizerError(error);
+             }
+         }
++        // A handler may have been awaiting an auxiliary operation when Stop was pressed.
++        // Commit the handler's deliberate partial result and do not start another finalizer.
++        if (context.abortSignal?.aborted) {
++            return { text, extraPatch };
++        }
+     }
+ 
+     return { text, extraPatch };
+-- 
+2.46.2.windows.1
+

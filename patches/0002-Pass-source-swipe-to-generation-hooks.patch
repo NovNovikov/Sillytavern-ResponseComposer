@@ -1,0 +1,57 @@
+From 793da1223f2dfe7f625010414b3bcc78b57f868e Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 02:19:51 +0200
+Subject: [PATCH 02/10] Pass source swipe to generation hooks
+
+
+diff --git a/public/script.js b/public/script.js
+index a48ba8ea7..112a9b777 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -4550,6 +4550,7 @@ function removeLastMessage() {
+  * @property {string} [quietImage] Image URL to use for the quiet prompt (defaults to empty string)
+  * @property {string} [quietName] Name to use for the quiet prompt (defaults to "System:")
+  * @property {number} [depth] Recursion depth for the generation. Used to prevent infinite loops in tool calls.
++ * @property {number} [sourceSwipeId] Source swipe ID when a new swipe generation is created.
+  * @property {JsonSchema} [jsonSchema] JSON schema to use for the structured generation. Usually requires a special instruction.
+  */
+ 
+@@ -4561,7 +4562,7 @@ function removeLastMessage() {
+  * @param {boolean} dryRun Whether to actually generate a message or just assemble the prompt
+  * @returns {Promise<any>} Returns a promise that resolves when the text is done generating.
+  */
+-export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0 } = {}, dryRun = false) {
++export async function Generate(type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, quietName, jsonSchema = null, depth = 0, sourceSwipeId = null } = {}, dryRun = false) {
+     console.log('Generate entered');
+     setGenerationProgress(0);
+     generation_started = new Date();
+@@ -4570,7 +4571,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+     await unshallowCharacter(this_chid);
+ 
+     // Occurs every time, even if the generation is aborted due to slash commands execution
+-    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage }, dryRun);
++    await eventSource.emit(event_types.GENERATION_STARTED, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, sourceSwipeId }, dryRun);
+ 
+     // Don't recreate abort controller if signal is passed
+     if (!(abortController && signal)) {
+@@ -4600,7 +4601,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+     }
+ 
+     // Occurs only if the generation is not aborted due to slash commands execution
+-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage }, dryRun);
++    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, sourceSwipeId }, dryRun);
+ 
+     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
+         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
+@@ -10696,7 +10697,7 @@ export async function swipe(event, direction, { source, repeated, message = chat
+ 
+         if (run_generate && !is_send_press) {
+             is_send_press = true;
+-            generation = Generate('swipe');
++            generation = Generate('swipe', { sourceSwipeId: originalSwipeId });
+         }
+ 
+         //Swipe in from the opposite side.
+-- 
+2.46.2.windows.1
+

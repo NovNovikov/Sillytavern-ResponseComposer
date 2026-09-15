@@ -1,0 +1,190 @@
+#st-message-constructor-panel .stmc-toggle-row,
+#st-message-constructor-panel .stmc-actions,
+#st-message-constructor-panel .stmc-block-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+#st-message-constructor-panel .stmc-toggle-row > label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#st-message-constructor-panel .stmc-preset-manager {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+#st-message-constructor-panel .stmc-preset-select,
+#st-message-constructor-panel .stmc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#st-message-constructor-panel .stmc-pipeline {
+    display: grid;
+    gap: 10px;
+}
+
+#st-message-constructor-panel .stmc-insert-row {
+    display: flex;
+    justify-content: center;
+}
+
+#st-message-constructor-panel .stmc-insert-row button {
+    min-width: 36px;
+}
+
+#st-message-constructor-panel .stmc-main-marker {
+    padding: 12px;
+    text-align: center;
+    font-weight: bold;
+    letter-spacing: 0.06em;
+    border-top: 2px solid var(--SmartThemeBorderColor, #888);
+    border-bottom: 2px solid var(--SmartThemeBorderColor, #888);
+}
+
+#st-message-constructor-panel .stmc-main-marker small {
+    display: block;
+    margin-top: 4px;
+    font-weight: normal;
+    letter-spacing: normal;
+    opacity: 0.75;
+}
+
+#st-message-constructor-panel .stmc-block {
+    border: 1px solid var(--SmartThemeBorderColor, #888);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#st-message-constructor-panel .stmc-block summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    cursor: pointer;
+}
+
+#st-message-constructor-panel .stmc-block summary::marker {
+    content: '';
+}
+
+#st-message-constructor-panel .stmc-block-name {
+    flex: 1;
+    font-weight: bold;
+}
+
+#st-message-constructor-panel .stmc-block-position {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75em;
+    opacity: 0.72;
+    background: var(--black30a, rgba(0, 0, 0, 0.2));
+}
+
+#st-message-constructor-panel .stmc-block-toggle {
+    flex: 0 0 auto;
+    border: 0;
+    padding: 0;
+    min-width: 28px;
+    background: transparent;
+    color: var(--active, #70b7a6);
+    font-size: 1.5em;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#st-message-constructor-panel .stmc-block-toggle.fa-toggle-off {
+    color: var(--grey70a, #8a8a8a);
+}
+
+#st-message-constructor-panel .stmc-block-toggle:hover {
+    filter: brightness(1.3);
+}
+
+#st-message-constructor-panel .stmc-block-disabled {
+    filter: brightness(0.68);
+}
+
+#st-message-constructor-panel .stmc-block-disabled .stmc-block-name::after {
+    content: 'disabled';
+    margin-left: 8px;
+    font-size: 0.76em;
+    font-weight: normal;
+    opacity: 0.75;
+}
+
+#st-message-constructor-panel .stmc-block-disabled .stmc-block-toggle {
+    filter: none;
+}
+
+#st-message-constructor-panel .stmc-block-content {
+    display: grid;
+    gap: 10px;
+    padding: 0 10px 12px;
+}
+
+#st-message-constructor-panel .stmc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px;
+}
+
+#st-message-constructor-panel .stmc-options {
+    display: grid;
+    gap: 6px;
+}
+
+#st-message-constructor-panel .stmc-options label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#st-message-constructor-panel .stmc-instructions,
+#st-message-constructor-panel .stmc-static-fields {
+    display: grid;
+    gap: 8px;
+    padding: 9px;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.10);
+}
+
+#st-message-constructor-panel [hidden] {
+    display: none;
+}
+
+#st-message-constructor-panel textarea {
+    min-height: 90px;
+}
+
+#st-message-constructor-panel .stmc-help {
+    margin-top: 10px;
+    opacity: 0.75;
+    font-size: 0.9em;
+}
+
+#st-message-constructor-panel .stmc-diagnostics {
+    margin-top: 12px;
+}
+
+#st-message-constructor-panel .stmc-diagnostics p {
+    margin: 8px 0;
+    opacity: 0.75;
+    font-size: 0.85em;
+}
+
+#st-message-constructor-panel #stmc-diagnostics-output {
+    max-height: 260px;
+    overflow: auto;
+    padding: 8px;
+    white-space: pre-wrap;
+    font-size: 0.78em;
+    background: rgba(127, 127, 127, 0.10);
+}

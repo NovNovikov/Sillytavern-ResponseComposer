@@ -1,0 +1,383 @@
+From c4559b8f5ac8c0339fb7d1e765456486931deb00 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 01:36:51 +0200
+Subject: [PATCH 01/10] Add generation response finalizers
+
+
+diff --git a/public/script.js b/public/script.js
+index d46d25d89..a48ba8ea7 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -630,6 +630,191 @@ export let extension_prompts = {};
+ export let main_api;// = "kobold";
+ let abortController = new AbortController();
+ 
++/**
++ * Finalizers transform a completed assistant response before its final message/swipe commit.
++ * They are intentionally generic: core does not know which extension registered one.
++ * @type {Set<(context: GenerationFinalizerContext) => Promise<GenerationFinalizerResult|void>|GenerationFinalizerResult|void>}
++ */
++const generationFinalizers = new Set();
++
++const GENERATION_FINALIZER_ERROR = Symbol('generationFinalizerError');
++const RESERVED_GENERATION_EXTRA_KEYS = new Set([
++    'api',
++    'model',
++    'reasoning',
++    'reasoning_duration',
++    'reasoning_signature',
++    'reasoning_phase',
++    'raw_assistant_output',
++    'token_count',
++    'time_to_first_token',
++]);
++
++/**
++ * Registers a handler that can asynchronously transform a completed assistant response.
++ * The returned function unregisters that exact handler.
++ *
++ * A handler receives an immutable snapshot. It may return a replacement text and/or a
++ * namespaced metadata patch; it must not mutate Tavern message objects directly.
++ *
++ * @param {(context: GenerationFinalizerContext) => Promise<GenerationFinalizerResult|void>|GenerationFinalizerResult|void} finalizer
++ * @returns {() => void}
++ */
++export function registerGenerationFinalizer(finalizer) {
++    if (typeof finalizer !== 'function') {
++        throw new TypeError('Generation finalizer must be a function.');
++    }
++
++    generationFinalizers.add(finalizer);
++    return () => generationFinalizers.delete(finalizer);
++}
++
++/**
++ * @typedef {object} GenerationFinalizerContext
++ * @property {string} type
++ * @property {string} text
++ * @property {string} reasoning
++ * @property {string|null} rawAssistantOutput
++ * @property {string} title
++ * @property {number} messageId
++ * @property {number|null} swipeId
++ * @property {AbortSignal} abortSignal
++ * @property {boolean} isStreaming
++ * @property {Readonly<Record<string, unknown>>} extraPatch
++ */
++
++/**
++ * @typedef {object} GenerationFinalizerResult
++ * @property {string} [text]
++ * @property {Record<string, unknown>} [extraPatch]
++ */
++
++function isPlainObject(value) {
++    return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
++}
++
++function createGenerationFinalizerError(error) {
++    const finalizerError = error instanceof Error ? error : new Error(String(error));
++    finalizerError[GENERATION_FINALIZER_ERROR] = true;
++    return finalizerError;
++}
++
++function mergeGenerationExtraPatch(currentPatch, nextPatch) {
++    if (!isPlainObject(nextPatch)) {
++        throw new TypeError('Generation finalizer extraPatch must be a plain object.');
++    }
++
++    const mergedPatch = { ...currentPatch };
++    for (const [namespace, value] of Object.entries(nextPatch)) {
++        if (RESERVED_GENERATION_EXTRA_KEYS.has(namespace)) {
++            throw new Error(`Generation finalizer cannot write reserved extra key: ${namespace}`);
++        }
++
++        if (isPlainObject(mergedPatch[namespace]) && isPlainObject(value)) {
++            mergedPatch[namespace] = { ...mergedPatch[namespace], ...structuredClone(value) };
++        } else {
++            mergedPatch[namespace] = structuredClone(value);
++        }
++    }
++
++    return mergedPatch;
++}
++
++/**
++ * Runs finalizers in registration order. Every handler observes the transformed text and
++ * accumulated metadata patch returned by preceding handlers.
++ * @param {Omit<GenerationFinalizerContext, 'text'|'extraPatch'> & { text: string }} context
++ * @returns {Promise<{text: string, extraPatch: Record<string, unknown>}>}
++ */
++async function runGenerationFinalizers(context) {
++    let text = String(context.text ?? '');
++    let extraPatch = {};
++
++    for (const finalizer of generationFinalizers) {
++        if (context.abortSignal?.aborted) {
++            throw createGenerationFinalizerError(new DOMException('Generation was aborted.', 'AbortError'));
++        }
++
++        const finalizerContext = Object.freeze({
++            ...context,
++            text,
++            extraPatch: Object.freeze(structuredClone(extraPatch)),
++        });
++
++        let result;
++        try {
++            result = await finalizer(finalizerContext);
++        } catch (error) {
++            throw createGenerationFinalizerError(error);
++        }
++
++        if (context.abortSignal?.aborted) {
++            throw createGenerationFinalizerError(new DOMException('Generation was aborted.', 'AbortError'));
++        }
++
++        if (result === undefined || result === null) {
++            continue;
++        }
++        if (!isPlainObject(result)) {
++            throw createGenerationFinalizerError(new TypeError('Generation finalizer result must be a plain object.'));
++        }
++        if (result.text !== undefined) {
++            if (typeof result.text !== 'string') {
++                throw createGenerationFinalizerError(new TypeError('Generation finalizer text must be a string.'));
++            }
++            text = result.text;
++        }
++        if (result.extraPatch !== undefined) {
++            try {
++                extraPatch = mergeGenerationExtraPatch(extraPatch, result.extraPatch);
++            } catch (error) {
++                throw createGenerationFinalizerError(error);
++            }
++        }
++    }
++
++    return { text, extraPatch };
++}
++
++function applyGenerationExtraPatch(message, extraPatch) {
++    if (!message || !isPlainObject(extraPatch) || Object.keys(extraPatch).length === 0) {
++        return;
++    }
++
++    message.extra = message.extra && typeof message.extra === 'object' ? message.extra : {};
++    for (const [namespace, value] of Object.entries(extraPatch)) {
++        message.extra[namespace] = structuredClone(value);
++    }
++}
++
++function getGenerationTargetSwipeId(type, targetMessage) {
++    if (Number.isInteger(targetMessage?.swipe_id)) {
++        return targetMessage.swipe_id;
++    }
++
++    return ['normal', 'regenerate'].includes(type) ? 0 : null;
++}
++
++function createGenerationRollbackSnapshot() {
++    return {
++        length: chat.length,
++        lastMessage: chat.length > 0 ? structuredClone(chat[chat.length - 1]) : null,
++    };
++}
++
++async function restoreGenerationRollbackSnapshot(snapshot) {
++    if (!snapshot) {
++        return;
++    }
++
++    cancelDebouncedChatSave();
++    chat.length = snapshot.length;
++    if (snapshot.length > 0 && snapshot.lastMessage) {
++        chat[snapshot.length - 1] = structuredClone(snapshot.lastMessage);
++    }
++    await printMessages();
++}
++
+ //css
+ var css_send_form_display = $('<div id=send_form></div>').css('display');
+ 
+@@ -3721,7 +3906,7 @@ class StreamingProcessor {
+      * @param {Object} options - Additional options for finalization.
+      * @param {boolean} options.unlockUI - Whether to unlock the generation UI.
+      */
+-    async finalizeIntermediaryMessage(messageId, text, { unlockUI = true }) {
++    async finalizeIntermediaryMessage(messageId, text, { unlockUI = true, runFinalizers = true }) {
+         await this.onProgressStreaming(messageId, text, true);
+         const messageElement = chatElement.find(`.mes[mesid="${messageId}"]`);
+         const message = chat[messageId];
+@@ -3729,6 +3914,34 @@ class StreamingProcessor {
+ 
+         await this.reasoningHandler.finish(messageId);
+ 
++        if (runFinalizers && this.type !== 'impersonate') {
++            const finalization = await runGenerationFinalizers({
++                type: this.type,
++                text: message.mes,
++                reasoning: message.extra?.reasoning ?? '',
++                rawAssistantOutput: message.extra?.raw_assistant_output ?? null,
++                title: message.title ?? '',
++                messageId,
++                swipeId: Number.isInteger(message.swipe_id) ? message.swipe_id : null,
++                abortSignal: this.abortController.signal,
++                isStreaming: true,
++            });
++            message.mes = finalization.text;
++            applyGenerationExtraPatch(message, finalization.extraPatch);
++
++            if (this.messageTextDom instanceof HTMLElement) {
++                this.messageTextDom.innerHTML = messageFormatting(
++                    message.mes,
++                    message.name,
++                    message.is_system,
++                    message.is_user,
++                    messageId,
++                    {},
++                    false,
++                );
++            }
++        }
++
+         if (Array.isArray(this.swipes) && this.swipes.length > 0) {
+             const swipeInfoExtra = structuredClone(message.extra ?? {});
+             delete swipeInfoExtra.token_count;
+@@ -4364,6 +4577,14 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         abortController = new AbortController();
+     }
+ 
++    // A finalizer can fail after a regenerate has removed its source reply, or after
++    // streaming has created an intermediary reply. Keep just the mutable chat tail so
++    // that finalizer failures can restore the user-visible state without affecting
++    // ordinary backend-error behavior.
++    const generationRollbackSnapshot = generationFinalizers.size > 0 && !dryRun && !['quiet', 'impersonate'].includes(type)
++        ? createGenerationRollbackSnapshot()
++        : null;
++
+     // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
+     const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
+     const isImpersonate = type == 'impersonate';
+@@ -5495,7 +5716,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+                 const shouldDeleteMessage = type !== 'swipe' && ['', '...'].includes(lastMessage?.mes) && !lastMessage?.extra?.reasoning && ['', '...'].includes(streamingProcessor?.result);
+                 hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
+                 if (hasToolCalls && !shouldDeleteMessage) {
+-                    await streamingProcessor.finalizeIntermediaryMessage(streamingProcessor.messageId, getMessage, { unlockUI: false });
++                    await streamingProcessor.finalizeIntermediaryMessage(streamingProcessor.messageId, getMessage, { unlockUI: false, runFinalizers: false });
+                 }
+                 const invocationResult = await ToolManager.invokeFunctionTools(streamingProcessor.toolCalls, {
+                     reasoningText: streamingProcessor.reasoningHandler.reasoning,
+@@ -5573,6 +5794,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         kobold_horde_model = title;
+ 
+         const swipes = extractMultiSwipes(data, type);
++        const hasToolCalls = canPerformToolCalls && ToolManager.hasToolCalls(data);
+ 
+         messageChunk = cleanUpMessage({
+             getMessage: getMessage,
+@@ -5625,6 +5847,27 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+             displayIncompleteSentences: displayIncomplete,
+         });
+ 
++        let extraPatch = {};
++        // Tool-call responses are intermediary. The recursive Generate call performs
++        // finalization once the model has produced the user-facing response.
++        if (!hasToolCalls && type !== 'impersonate' && type !== 'quiet') {
++            const messageId = getNextMessageId(type);
++            const targetMessage = chat[messageId];
++            const finalization = await runGenerationFinalizers({
++                type,
++                text: getMessage,
++                reasoning,
++                rawAssistantOutput,
++                title,
++                messageId,
++                swipeId: getGenerationTargetSwipeId(type, targetMessage),
++                abortSignal: abortController.signal,
++                isStreaming: false,
++            });
++            getMessage = finalization.text;
++            extraPatch = finalization.extraPatch;
++        }
++
+         if (isImpersonate) {
+             $('#send_textarea').val(getMessage)[0].dispatchEvent(new Event('input', { bubbles: true }));
+             await eventSource.emit(event_types.IMPERSONATE_READY, getMessage);
+@@ -5634,9 +5877,9 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         } else {
+             // Without streaming we'll be having a full message on continuation. Treat it as a last chunk.
+             if (originalType !== 'continue') {
+-                ({ type, getMessage } = await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, rawAssistantOutput }));
++                ({ type, getMessage } = await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, rawAssistantOutput, extraPatch }));
+             } else {
+-                ({ type, getMessage } = await saveReply({ type: 'appendFinal', getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, rawAssistantOutput }));
++                ({ type, getMessage } = await saveReply({ type: 'appendFinal', getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, rawAssistantOutput, extraPatch }));
+             }
+ 
+             // This relies on `saveReply` having been called to add the message to the chat, so it must be last.
+@@ -5644,7 +5887,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         }
+ 
+         if (canPerformToolCalls) {
+-            const hasToolCalls = ToolManager.hasToolCalls(data);
+             const shouldDeleteMessage = type !== 'swipe' && ['', '...'].includes(getMessage) && !reasoning;
+             hasToolCalls && shouldDeleteMessage && await deleteLastMessage();
+             const invocationResult = await ToolManager.invokeFunctionTools(data, { reasoningText: reasoning });
+@@ -5692,7 +5934,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+      * @param {Error|object} exception Error or response JSON
+      * @throws {Error|object} Re-throws the exception
+      */
+-    function onError(exception) {
++    async function onError(exception) {
++        if (exception?.[GENERATION_FINALIZER_ERROR]) {
++            await restoreGenerationRollbackSnapshot(generationRollbackSnapshot);
++        }
++
+         // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
+         if (typeof exception?.error?.message === 'string') {
+             toastr.error(exception.error.message, t`Text generation error`, { timeOut: 10000, extendedTimeOut: 20000 });
+@@ -6745,7 +6991,7 @@ async function processImageAttachment(message, { imageUrls }) {
+  * @property {string} type Type of generation
+  * @property {string} getMessage Generated message
+  */
+-export async function saveReply({ type, getMessage, fromStreaming = false, title = '', swipes = [], reasoning = '', imageUrls = [], reasoningSignature = null, rawAssistantOutput = null }) {
++export async function saveReply({ type, getMessage, fromStreaming = false, title = '', swipes = [], reasoning = '', imageUrls = [], reasoningSignature = null, rawAssistantOutput = null, extraPatch = {} }) {
+     // Backward compatibility
+     if (arguments.length > 1 && typeof arguments[0] !== 'object') {
+         console.trace('saveReply called with positional arguments. Please use an object instead.');
+@@ -6789,6 +7035,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
+             lastMessage.extra.reasoning_duration = null;
+             lastMessage.extra.reasoning_signature = reasoningSignature;
+             await processImageAttachment(lastMessage, { imageUrls });
++            applyGenerationExtraPatch(lastMessage, extraPatch);
+             if (power_user.message_token_count_enabled) {
+                 const tokenCountText = (reasoning || '') + lastMessage.mes;
+                 lastMessage.extra.token_count = await getTokenCountAsync(tokenCountText, 0);
+@@ -6818,6 +7065,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
+             lastMessage.extra.reasoning_signature = reasoningSignature;
+         }
+         await processImageAttachment(lastMessage, { imageUrls });
++        applyGenerationExtraPatch(lastMessage, extraPatch);
+         if (power_user.message_token_count_enabled) {
+             const tokenCountText = (reasoning || '') + lastMessage.mes;
+             lastMessage.extra.token_count = await getTokenCountAsync(tokenCountText, 0);
+@@ -6849,6 +7097,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
+             lastMessage.extra.reasoning_phase = lastMessage.mes ? ContinuationPhase.FINAL : ContinuationPhase.REASONING;
+         }
+         await processImageAttachment(lastMessage, { imageUrls });
++        applyGenerationExtraPatch(lastMessage, extraPatch);
+         // We don't know if the reasoning duration extended, so we don't update it here on purpose.
+         if (power_user.message_token_count_enabled) {
+             const tokenCountText = (reasoning || '') + lastMessage.mes;
+@@ -6904,6 +7153,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
+         }
+ 
+         await processImageAttachment(newMessage, { imageUrls });
++        applyGenerationExtraPatch(newMessage, extraPatch);
+         const chat_id = (chat.length - 1);
+ 
+         !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
+-- 
+2.46.2.windows.1
+

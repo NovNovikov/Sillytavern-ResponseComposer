@@ -1,0 +1,41 @@
+From 1b33d77d14a8bfd7304779319b6d9b7bde122f13 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:40:25 +0200
+Subject: [PATCH 09/10] feat: emit generation saved event
+
+
+diff --git a/public/script.js b/public/script.js
+index e486ac4ae..617ab6b75 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -3987,6 +3987,7 @@ class StreamingProcessor {
+             return await swipe(null, SWIPE_DIRECTION.RIGHT, { source: SWIPE_SOURCE.AUTO_SWIPE, repeated: true, forceMesId: chat.length - 1 });
+         }
+         await saveChatConditional();
++        await eventSource.emit(event_types.GENERATION_SAVED, this.messageId, this.type);
+ 
+         playMessageSound();
+     }
+@@ -5920,6 +5921,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+ 
+         console.debug('/api/chats/save called by /Generate');
+         await saveChatConditional();
++        await eventSource.emit(event_types.GENERATION_SAVED, getNextMessageId(type), type);
+         unblockGeneration(type);
+         streamingProcessor = null;
+ 
+diff --git a/public/scripts/events.js b/public/scripts/events.js
+index c8d6bd39d..ad8cafa19 100644
+--- a/public/scripts/events.js
++++ b/public/scripts/events.js
+@@ -24,6 +24,7 @@ export const event_types = {
+     GENERATION_STARTED: 'generation_started',
+     GENERATION_STOPPED: 'generation_stopped',
+     GENERATION_ENDED: 'generation_ended',
++    GENERATION_SAVED: 'generation_saved',
+     SD_PROMPT_PROCESSING: 'sd_prompt_processing',
+     EXTENSIONS_FIRST_LOAD: 'extensions_first_load',
+     EXTENSION_SETTINGS_LOADED: 'extension_settings_loaded',
+-- 
+2.46.2.windows.1
+

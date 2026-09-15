@@ -1,0 +1,113 @@
+From a7a8d38c3b5a420555ac31b67e7b8a2b385fdbd2 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:10:22 +0200
+Subject: [PATCH 06/10] fix: preserve reply when response finalizer fails
+
+
+diff --git a/public/script.js b/public/script.js
+index 634ce3f62..d9e86ab87 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -3919,30 +3919,38 @@ class StreamingProcessor {
+         await this.reasoningHandler.finish(messageId);
+ 
+         if (runFinalizers && this.type !== 'impersonate') {
+-            const finalization = await runGenerationFinalizers({
+-                type: this.type,
+-                text: message.mes,
+-                reasoning: message.extra?.reasoning ?? '',
+-                rawAssistantOutput: message.extra?.raw_assistant_output ?? null,
+-                title: message.title ?? '',
+-                messageId,
+-                swipeId: Number.isInteger(message.swipe_id) ? message.swipe_id : null,
+-                abortSignal: this.abortController.signal,
+-                isStreaming: true,
+-            });
+-            message.mes = finalization.text;
+-            applyGenerationExtraPatch(message, finalization.extraPatch);
+-
+-            if (this.messageTextDom instanceof HTMLElement) {
+-                this.messageTextDom.innerHTML = messageFormatting(
+-                    message.mes,
+-                    message.name,
+-                    message.is_system,
+-                    message.is_user,
++            try {
++                const finalization = await runGenerationFinalizers({
++                    type: this.type,
++                    text: message.mes,
++                    reasoning: message.extra?.reasoning ?? '',
++                    rawAssistantOutput: message.extra?.raw_assistant_output ?? null,
++                    title: message.title ?? '',
+                     messageId,
+-                    {},
+-                    false,
+-                );
++                    swipeId: Number.isInteger(message.swipe_id) ? message.swipe_id : null,
++                    abortSignal: this.abortController.signal,
++                    isStreaming: true,
++                });
++                message.mes = finalization.text;
++                applyGenerationExtraPatch(message, finalization.extraPatch);
++
++                if (this.messageTextDom instanceof HTMLElement) {
++                    this.messageTextDom.innerHTML = messageFormatting(
++                        message.mes,
++                        message.name,
++                        message.is_system,
++                        message.is_user,
++                        messageId,
++                        {},
++                        false,
++                    );
++                }
++            } catch (error) {
++                // The stream has already created a valid assistant message. A
++                // post-processor failure must not delete that message via the
++                // generation rollback path.
++                console.error('Generation response finalizer failed; preserving the raw assistant response.', error);
++                toastr.error(t`Response post-processing failed. The generated message was kept.`);
+             }
+         }
+ 
+@@ -5875,19 +5883,24 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         if (!hasToolCalls && type !== 'impersonate' && type !== 'quiet') {
+             const messageId = getNextMessageId(type);
+             const targetMessage = chat[messageId];
+-            const finalization = await runGenerationFinalizers({
+-                type,
+-                text: getMessage,
+-                reasoning,
+-                rawAssistantOutput,
+-                title,
+-                messageId,
+-                swipeId: getGenerationTargetSwipeId(type, targetMessage),
+-                abortSignal: abortController.signal,
+-                isStreaming: false,
+-            });
+-            getMessage = finalization.text;
+-            extraPatch = finalization.extraPatch;
++            try {
++                const finalization = await runGenerationFinalizers({
++                    type,
++                    text: getMessage,
++                    reasoning,
++                    rawAssistantOutput,
++                    title,
++                    messageId,
++                    swipeId: getGenerationTargetSwipeId(type, targetMessage),
++                    abortSignal: abortController.signal,
++                    isStreaming: false,
++                });
++                getMessage = finalization.text;
++                extraPatch = finalization.extraPatch;
++            } catch (error) {
++                console.error('Generation response finalizer failed; preserving the raw assistant response.', error);
++                toastr.error(t`Response post-processing failed. The generated message was kept.`);
++            }
+         }
+ 
+         if (isImpersonate) {
+-- 
+2.46.2.windows.1
+

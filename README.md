@@ -1,0 +1,84 @@
+# Multi-Stage Response Composer
+
+SillyTavern extension that constructs one ordinary assistant reply from a sequential pipeline:
+
+```text
+PRE blocks → MAIN → POST blocks → one saved assistant message
+```
+
+`MAIN` is SillyTavern's normal generation. The extension does not replace its generation controls or create a second chat message. PRE and POST stages can make extra LLM requests or insert static text; their output is assembled around the MAIN result before the reply is committed.
+
+## Features
+
+- Sequential `PRE → MAIN → POST` pipeline.
+- LLM and static-text auxiliary blocks.
+- Per-block enable switch, output visibility, regex processing and output extraction.
+- Static blocks can run always, when the preceding output matches a JavaScript RegExp, or when a Quick Reply returns `true`.
+- PRE results are propagated after chat history and before Post-History Instruction.
+- POST results are assembled into the same visible assistant message as MAIN.
+- Swipe, regenerate and continue support. A block can be kept on a swipe.
+- Only MAIN reasoning is retained as normal reasoning. Auxiliary reasoning is discarded.
+- Hidden stage data and assembly data are kept per swipe in message metadata; discarded output is not saved.
+- Abort and finalizer failures use Tavern's normal generation cleanup path.
+
+## Requirements
+
+This extension requires the accompanying SillyTavern core hooks. Vanilla SillyTavern does not currently provide the generation-finalizer and Prompt Manager APIs used here.
+
+The required core commits are supplied in [`patches/`](patches). They were created against the `release` checkout whose base commit is `9d7e6ab64`.
+
+From the root of that SillyTavern checkout, apply them in order:
+
+```powershell
+git am --3way path\to\st-message-constructor\patches\*.patch
+```
+
+If your fork already contains the corresponding changes, do not apply the patch series again. `git am --abort` cancels the operation if a conflict needs manual resolution.
+
+The Connection Manager extension is needed for a block that selects a Connection Profile. A block can otherwise fall back to the currently selected Chat Completion connection.
+
+## Installation
+
+Clone this repository into the user's third-party extension directory:
+
+```powershell
+git clone https://github.com/NovNovikov/Sillytavern-ResponseComposer.git `
+  SillyTavernData\default-user\extensions\st-message-constructor
+```
+
+For development, a directory junction or symbolic link to this repository works as well. Restart SillyTavern or use `Ctrl+F5` after updating the extension.
+
+## Creating a pipeline
+
+1. Enable the composer and create a pipeline preset.
+2. Add PRE blocks above `MAIN MESSAGE` and POST blocks below it.
+3. Choose `Generate with LLM` or `Static Text` for each auxiliary block.
+4. Select its Connection Profile and, when applicable, its Prompt OAI Preset.
+5. Choose whether the output is visible, hidden, or discarded after use.
+
+Stages always execute in screen order. MAIN cannot be removed and always uses the normal SillyTavern generation flow.
+
+### Connection Profile and Prompt OAI Preset
+
+These fields intentionally have separate jobs:
+
+- **Connection Profile** selects API source, endpoint, model, credentials and the profile's generation preset. Its preset supplies request settings, including Custom endpoint **Additional Parameters** such as `chat_template_kwargs`.
+- **Prompt OAI Preset** selects Prompt Manager composition for the auxiliary request: prompt order, Character/Persona/Personality/Scenario, World Info and checkpoint entries. It does not replace the profile's request settings.
+
+With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options under **Add additional instructions** control whether Persona Description, Char Description, Char Personality, Scenario, Worldbook and Summarized Checkpoints are inserted. Connection Profile request parameters still apply.
+
+### Output and conditions
+
+`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. A static block can test the immediately preceding additional block with a JavaScript RegExp, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`.
+
+**Output Extraction** accepts a JavaScript RegExp. If it has a capture group, the first capture group becomes the output; otherwise the entire match is used.
+
+## Development
+
+The extension source is plain browser JavaScript. A quick syntax check is sufficient for local edits:
+
+```powershell
+node --check index.js
+```
+
+The settings and chat data used by the extension remain in SillyTavern's user-data directory and are not part of this repository.

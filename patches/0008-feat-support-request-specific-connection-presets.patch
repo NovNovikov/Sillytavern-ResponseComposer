@@ -1,0 +1,36 @@
+From 5a18ee279c0fc1d1dd8cccc7e87c5d8675423f63 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:38:59 +0200
+Subject: [PATCH 08/10] feat: support request-specific connection presets
+
+
+diff --git a/public/scripts/extensions/shared.js b/public/scripts/extensions/shared.js
+index 81224859e..c816784b6 100644
+--- a/public/scripts/extensions/shared.js
++++ b/public/scripts/extensions/shared.js
+@@ -413,11 +413,12 @@ export class ConnectionManagerRequestService {
+      * @param {boolean?} [custom.includePreset=true]
+      * @param {boolean?} [custom.includeInstruct=true]
+      * @param {Partial<InstructSettings>?} [custom.instructSettings] Override instruct settings
++     * @param {string?} [custom.presetName] Override the profile's generation preset without selecting it in the UI
+      * @param {Record<string, any>} [overridePayload] - Override payload for the request
+      * @returns {Promise<import('../custom-request.js').ExtractedData | (() => AsyncGenerator<import('../custom-request.js').StreamResponse>)>} If not streaming, returns extracted data; if streaming, returns a function that creates an AsyncGenerator
+      */
+     static async sendRequest(profileId, prompt, maxTokens, custom = this.defaultSendRequestParams, overridePayload = {}) {
+-        const { stream, signal, extractData, includePreset, includeInstruct, instructSettings } = { ...this.defaultSendRequestParams, ...custom };
++        const { stream, signal, extractData, includePreset, includeInstruct, instructSettings, presetName } = { ...this.defaultSendRequestParams, ...custom };
+ 
+         const context = SillyTavern.getContext();
+         if (context.extensionSettings.disabledExtensions.includes('connection-manager')) {
+@@ -454,7 +455,7 @@ export class ConnectionManagerRequestService {
+                         custom_prompt_post_processing: profile['prompt-post-processing'],
+                         ...overridePayload,
+                     }, {
+-                        presetName: includePreset ? profile.preset : undefined,
++                          presetName: includePreset ? (presetName ?? profile.preset) : undefined,
+                     }, extractData, signal);
+                 }
+                 case 'textgenerationwebui': {
+-- 
+2.46.2.windows.1
+

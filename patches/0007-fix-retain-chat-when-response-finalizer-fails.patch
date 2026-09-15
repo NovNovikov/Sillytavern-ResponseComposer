@@ -1,0 +1,80 @@
+From 337983ba7d9900e2c077373572ea2dcf49c99e93 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 15:16:46 +0200
+Subject: [PATCH 07/10] fix: retain chat when response finalizer fails
+
+
+diff --git a/public/script.js b/public/script.js
+index d9e86ab87..e486ac4ae 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -799,26 +799,6 @@ function getGenerationTargetSwipeId(type, targetMessage) {
+     return ['normal', 'regenerate'].includes(type) ? 0 : null;
+ }
+ 
+-function createGenerationRollbackSnapshot() {
+-    return {
+-        length: chat.length,
+-        lastMessage: chat.length > 0 ? structuredClone(chat[chat.length - 1]) : null,
+-    };
+-}
+-
+-async function restoreGenerationRollbackSnapshot(snapshot) {
+-    if (!snapshot) {
+-        return;
+-    }
+-
+-    cancelDebouncedChatSave();
+-    chat.length = snapshot.length;
+-    if (snapshot.length > 0 && snapshot.lastMessage) {
+-        chat[snapshot.length - 1] = structuredClone(snapshot.lastMessage);
+-    }
+-    await printMessages();
+-}
+-
+ //css
+ var css_send_form_display = $('<div id=send_form></div>').css('display');
+ 
+@@ -4590,15 +4570,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         abortController = new AbortController();
+     }
+ 
+-    // A finalizer can fail after a regenerate has removed its source reply, or after
+-    // streaming has created an intermediary reply. For normal generation, wait until
+-    // the pending user message has been stored before taking this snapshot. Otherwise
+-    // a finalizer failure would restore the pre-send length and erase that user message.
+-    const shouldTrackFinalizerRollback = generationFinalizers.size > 0 && !dryRun && !['quiet', 'impersonate'].includes(type);
+-    let generationRollbackSnapshot = shouldTrackFinalizerRollback && (type !== 'normal' || depth > 0)
+-        ? createGenerationRollbackSnapshot()
+-        : null;
+-
+     // OpenAI doesn't need instruct mode. Use OAI main prompt instead.
+     const isInstruct = power_user.instruct.enabled && main_api !== 'openai';
+     const isImpersonate = type == 'impersonate';
+@@ -4759,10 +4730,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         await sendMessageAsUser(oai_settings.send_if_empty.trim(), messageBias);
+     }
+ 
+-    if (!generationRollbackSnapshot && shouldTrackFinalizerRollback && type === 'normal' && !depth) {
+-        generationRollbackSnapshot = createGenerationRollbackSnapshot();
+-    }
+-
+     // User input is part of the chat at this point. Extensions can safely perform
+     // asynchronous preparation here without racing the normal send path.
+     if (type === 'normal' && !depth) {
+@@ -5971,7 +5938,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+      */
+     async function onError(exception) {
+         if (exception?.[GENERATION_FINALIZER_ERROR]) {
+-            await restoreGenerationRollbackSnapshot(generationRollbackSnapshot);
++            // The assistant reply may already be rendered by streaming when a
++            // response finalizer fails. Never truncate chat here: that would erase
++            // the user's just-sent message and the completed MAIN response.
++            console.error('Generation response finalizer failed after reply creation.', exception);
++            toastr.error(`Response post-processing failed. The generated message was kept. ${exception.message || ''}`.trim());
+         }
+ 
+         // if the response JSON was thrown (novel|textgenerationwebui|kobold), show the error message
+-- 
+2.46.2.windows.1
+

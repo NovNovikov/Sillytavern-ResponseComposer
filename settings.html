@@ -1,0 +1,40 @@
+<div id="st-message-constructor-panel">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Multi-Stage Response Composer</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div class="stmc-toggle-row">
+                <label><input id="stmc-enabled" type="checkbox"> Enable Addon</label>
+                <label><input id="stmc-use-regex" type="checkbox"> Use Regex</label>
+            </div>
+
+            <div class="stmc-preset-manager">
+                <label class="stmc-preset-select">
+                    <span>Pipeline Preset</span>
+                    <select id="stmc-preset" class="text_pole"></select>
+                </label>
+                <div class="stmc-actions">
+                    <button id="stmc-new-preset" class="menu_button">New</button>
+                    <button id="stmc-save-preset" class="menu_button">Save</button>
+                    <button id="stmc-save-as-preset" class="menu_button">Save As</button>
+                    <button id="stmc-rename-preset" class="menu_button">Rename</button>
+                    <button id="stmc-delete-preset" class="menu_button">Delete</button>
+                    <button id="stmc-import-preset" class="menu_button">Import</button>
+                    <button id="stmc-export-preset" class="menu_button">Export</button>
+                    <input id="stmc-import-file" type="file" accept="application/json,.json" hidden>
+                </div>
+            </div>
+
+            <div id="stmc-pipeline" class="stmc-pipeline"></div>
+            <div class="stmc-help">Stages run strictly in order. MAIN uses normal SillyTavern generation and cannot be removed. Static Text blocks add text without an LLM request. Their conditions can test the previous additional block’s processed output with a JavaScript RegExp, or run a Quick Reply. A Quick Reply must return <code>true</code>, <code>1</code>, <code>yes</code>, or <code>on</code> through its final pipe value. It receives <code>{{arg::previousOutput}}</code>, <code>{{arg::blockId}}</code>, <code>{{arg::blockName}}</code>, and <code>{{arg::pipelineType}}</code>. Output Extraction accepts a JavaScript RegExp; its first capture group is used when present.</div>
+            <details class="stmc-diagnostics">
+                <summary>Pipeline diagnostics</summary>
+                <p>Structural trace only: no message or prompt text is recorded.</p>
+                <pre id="stmc-diagnostics-output">No pipeline run recorded yet.</pre>
+                <button id="stmc-clear-diagnostics" type="button" class="menu_button">Clear trace</button>
+            </details>
+        </div>
+    </div>
+</div>

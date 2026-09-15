@@ -1,0 +1,163 @@
+From 3da2e36c83a4bbb630b88c2e0549ddde86ea9b3e Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 17:02:44 +0200
+Subject: [PATCH 10/10] feat: build auxiliary prompts from OAI presets
+
+
+diff --git a/public/script.js b/public/script.js
+index 617ab6b75..3a6cbda42 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -104,6 +104,7 @@ import {
+     sendOpenAIRequest,
+     loadOpenAISettings,
+     oai_settings,
++    withChatCompletionPreset,
+     openai_messages_count,
+     chat_completion_sources,
+     getChatCompletionModel,
+@@ -6346,6 +6347,62 @@ export function getMaxPromptTokens(overrideResponseLength = null) {
+     return getMaxContextTokens() - (overrideResponseLength || getMaxResponseTokens());
+ }
+ 
++/**
++ * Builds an ordinary Chat Completion prompt without starting a generation or
++ * changing the selected preset in the interface. This is intended for callers
++ * that need Prompt Manager composition with a named preset.
++ * @param {object} options
++ * @param {ChatMessage[]} [options.messages] Chat history to include.
++ * @param {string|null} [options.presetName] Chat Completion preset to apply.
++ * @param {string} [options.supplementaryInstruction] Per-request instruction appended after chat history.
++ * @param {string} [options.type] Generation type used for World Info triggering.
++ * @returns {Promise<object[]>}
++ */
++export async function prepareChatCompletionMessages({ messages = chat, presetName = null, supplementaryInstruction = '', type = 'normal' } = {}) {
++    return await withChatCompletionPreset(presetName, async () => {
++        const fields = getCharacterCardFields();
++        const history = Array.isArray(messages) ? messages : chat;
++        const worldInfoChat = history
++            .filter(message => !message?.is_system)
++            .map(message => world_info_include_names ? `${message.name}: ${message.mes}` : message.mes)
++            .reverse();
++        const worldInfo = await getWorldInfoPrompt(worldInfoChat, getMaxPromptTokens(), false, {
++            personaDescription: fields.persona,
++            characterDescription: fields.description,
++            characterPersonality: fields.personality,
++            characterDepthPrompt: fields.charDepthPrompt,
++            scenario: fields.scenario,
++            creatorNotes: fields.creatorNotes,
++            trigger: GENERATION_TYPE_TRIGGERS.includes(type) ? type : 'normal',
++        });
++        const [prompt] = await prepareOpenAIMessages({
++            name2,
++            charDescription: fields.description,
++            charPersonality: fields.personality,
++            scenario: fields.scenario,
++            worldInfoBefore: worldInfo.worldInfoBefore,
++            worldInfoAfter: worldInfo.worldInfoAfter,
++            extensionPrompts: extension_prompts,
++            bias: '',
++            type: 'normal',
++            quietPrompt: '',
++            quietImage: null,
++            cyclePrompt: '',
++            systemPromptOverride: fields.system,
++            jailbreakPromptOverride: fields.jailbreak,
++            messages: setOpenAIMessages(history),
++            messageExamples: setOpenAIMessageExamples(parseMesExamples(fields.mesExamples, false)),
++        // Prompt composition must not re-render Prompt Manager while a block is
++        // running with another preset's temporary in-memory settings.
++        }, true);
++        const instruction = String(supplementaryInstruction ?? '').trim();
++        if (instruction) {
++            prompt.push({ role: 'system', content: instruction, injected: true });
++        }
++        return prompt;
++    });
++}
++
+ function parseTokenCounts(counts, thisPromptBits) {
+     /**
+      * @param {any[]} numbers
+diff --git a/public/scripts/openai.js b/public/scripts/openai.js
+index 38afee565..f34c528ed 100644
+--- a/public/scripts/openai.js
++++ b/public/scripts/openai.js
+@@ -4991,6 +4991,39 @@ function onSettingsPresetChange() {
+     });
+ }
+ 
++/**
++ * Runs an operation with a named Chat Completion preset applied in memory.
++ * It intentionally does not update form controls or emit preset-change events.
++ * @template T
++ * @param {string|null|undefined} presetName
++ * @param {() => Promise<T>|T} operation
++ * @returns {Promise<T>}
++ */
++export async function withChatCompletionPreset(presetName, operation) {
++    if (!presetName) {
++        return await operation();
++    }
++
++    const presetIndex = openai_setting_names[presetName];
++    const savedPreset = openai_settings[presetIndex];
++    if (!savedPreset) {
++        throw new Error(`OAI Preset "${presetName}" is no longer available.`);
++    }
++
++    const snapshot = structuredClone(oai_settings);
++    const preset = structuredClone(savedPreset);
++    migrateChatCompletionSettings(preset);
++    try {
++        Object.assign(oai_settings, preset, { preset_settings_openai: presetName });
++        return await operation();
++    } finally {
++        for (const key of Object.keys(oai_settings)) {
++            delete oai_settings[key];
++        }
++        Object.assign(oai_settings, snapshot);
++    }
++}
++
+ /**
+  * Get the maximum context size for the OpenAI model
+  * @param {string} value Model identifier
+diff --git a/public/scripts/st-context.js b/public/scripts/st-context.js
+index 01701de7b..4f7a4af97 100644
+--- a/public/scripts/st-context.js
++++ b/public/scripts/st-context.js
+@@ -50,6 +50,7 @@ import {
+     unshallowCharacter,
+     deleteLastMessage,
+     getCharacterCardFields,
++    prepareChatCompletionMessages,
+     swipe_right,
+     swipe_left,
+     generateRaw,
+@@ -86,7 +87,7 @@ import { addLocaleData, getCurrentLocale, t, translate } from './i18n.js';
+ import { hideLoader, showLoader } from './loader.js';
+ import { loader } from './action-loader.js';
+ import { MacrosParser } from './macros.js';
+-import { getChatCompletionModel, oai_settings } from './openai.js';
++import { getChatCompletionModel, oai_settings, withChatCompletionPreset } from './openai.js';
+ import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+ import { power_user, registerDebugFunction } from './power-user.js';
+ import { getPresetManager } from './preset-manager.js';
+@@ -224,11 +225,13 @@ export function getContext() {
+         POPUP_TYPE,
+         POPUP_RESULT,
+         chatCompletionSettings: oai_settings,
++        withChatCompletionPreset,
+         textCompletionSettings: textgenerationwebui_settings,
+         powerUserSettings: power_user,
+         getCharacters,
+         getOneCharacter,
+         getCharacterCardFields,
++        prepareChatCompletionMessages,
+         getCharacterSource,
+         importFromExternalUrl,
+         importTags,
+-- 
+2.46.2.windows.1
+

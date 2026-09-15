@@ -1,0 +1,51 @@
+From 9fa2b6fbf7f5fae43c7e0e2f5f78138528807bee Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 14:59:25 +0200
+Subject: [PATCH 05/10] feat: add post-send generation preparation hook
+
+
+diff --git a/public/script.js b/public/script.js
+index ed6c5c7a7..634ce3f62 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -4608,6 +4608,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+     // Occurs only if the generation is not aborted due to slash commands execution
+     await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, sourceSwipeId }, dryRun);
+ 
++    // Non-normal modes already have their source reply in chat. Run preparation
++    // before their generation-specific message handling can replace that reply.
++    if (type !== 'normal' || depth > 0) {
++        await eventSource.emit(event_types.GENERATION_BEFORE_MAIN, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, sourceSwipeId }, dryRun);
++    }
++
+     if (main_api == 'kobold' && kai_settings.streaming_kobold && !kai_flags.can_use_streaming) {
+         toastr.error(t`Streaming is enabled, but the version of Kobold used does not support token streaming.`, undefined, { timeOut: 10000, preventDuplicates: true });
+         unblockGeneration(type);
+@@ -4749,6 +4755,12 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         generationRollbackSnapshot = createGenerationRollbackSnapshot();
+     }
+ 
++    // User input is part of the chat at this point. Extensions can safely perform
++    // asynchronous preparation here without racing the normal send path.
++    if (type === 'normal' && !depth) {
++        await eventSource.emit(event_types.GENERATION_BEFORE_MAIN, type, { automatic_trigger, force_name2, quiet_prompt, quietToLoud, skipWIAN, force_chid, signal, quietImage, sourceSwipeId }, dryRun);
++    }
++
+     let {
+         description,
+         personality,
+diff --git a/public/scripts/events.js b/public/scripts/events.js
+index 852eaa7fc..c8d6bd39d 100644
+--- a/public/scripts/events.js
++++ b/public/scripts/events.js
+@@ -20,6 +20,7 @@ export const event_types = {
+     // TODO: Naming convention is inconsistent with other events
+     CHAT_LOADED: 'chatLoaded',
+     GENERATION_AFTER_COMMANDS: 'GENERATION_AFTER_COMMANDS',
++    GENERATION_BEFORE_MAIN: 'generation_before_main',
+     GENERATION_STARTED: 'generation_started',
+     GENERATION_STOPPED: 'generation_stopped',
+     GENERATION_ENDED: 'generation_ended',
+-- 
+2.46.2.windows.1
+

@@ -1,0 +1,13 @@
+{
+  "name": "st-message-constructor",
+  "display_name": "Multi-Stage Response Composer",
+  "loading_order": 130,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenAI Codex",
+  "description": "Build one SillyTavern assistant response from sequential PRE, MAIN, and POST stages.",
+  "version": "0.1.0",
+  "manifest_version": 3
+}

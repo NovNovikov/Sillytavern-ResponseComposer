@@ -1,0 +1,40 @@
+From c533ee9c2dde6d9b4df3ea3d40a231e3011e3453 Mon Sep 17 00:00:00 2001
+From: NovNovikov <113181372+NovNovikov@users.noreply.github.com>
+Date: Tue, 15 Sep 2026 14:54:31 +0200
+Subject: [PATCH 04/10] fix: preserve user message on finalizer rollback
+
+
+diff --git a/public/script.js b/public/script.js
+index 018f75eac..ed6c5c7a7 100644
+--- a/public/script.js
++++ b/public/script.js
+@@ -4583,10 +4583,11 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+     }
+ 
+     // A finalizer can fail after a regenerate has removed its source reply, or after
+-    // streaming has created an intermediary reply. Keep just the mutable chat tail so
+-    // that finalizer failures can restore the user-visible state without affecting
+-    // ordinary backend-error behavior.
+-    const generationRollbackSnapshot = generationFinalizers.size > 0 && !dryRun && !['quiet', 'impersonate'].includes(type)
++    // streaming has created an intermediary reply. For normal generation, wait until
++    // the pending user message has been stored before taking this snapshot. Otherwise
++    // a finalizer failure would restore the pre-send length and erase that user message.
++    const shouldTrackFinalizerRollback = generationFinalizers.size > 0 && !dryRun && !['quiet', 'impersonate'].includes(type);
++    let generationRollbackSnapshot = shouldTrackFinalizerRollback && (type !== 'normal' || depth > 0)
+         ? createGenerationRollbackSnapshot()
+         : null;
+ 
+@@ -4744,6 +4745,10 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
+         await sendMessageAsUser(oai_settings.send_if_empty.trim(), messageBias);
+     }
+ 
++    if (!generationRollbackSnapshot && shouldTrackFinalizerRollback && type === 'normal' && !depth) {
++        generationRollbackSnapshot = createGenerationRollbackSnapshot();
++    }
++
+     let {
+         description,
+         personality,
+-- 
+2.46.2.windows.1
+
