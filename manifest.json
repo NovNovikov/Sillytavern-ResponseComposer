@@ -8,6 +8,6 @@
   "css": "style.css",
   "author": "OpenAI Codex",
   "description": "Build one SillyTavern assistant response from sequential PRE, MAIN, and POST stages.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "manifest_version": 3
 }

@@ -61,6 +61,7 @@ function newBlock(position = 'pre') {
         position,
         connectionProfileId: '',
         oaiPresetId: EMPTY_PRESET,
+        emptyHistoryMessageLimit: 0,
         visibility: 'visible',
         propagate: true,
         keepOnSwipe: false,
@@ -246,6 +247,7 @@ function renderBlock(block, isOpen = false) {
                     </select></label>
                 </div>
                 <p class="stmc-hint"${isStatic ? ' hidden' : ''}>The Connection Profile supplies API settings and Additional Parameters. Prompt OAI Preset controls prompt composition.</p>
+                <label class="stmc-field"${isStatic || !isEmptyPreset ? ' hidden' : ''}><span>Empty Preset: last chat messages</span><input class="text_pole" type="number" min="0" step="1" data-field="emptyHistoryMessageLimit" value="${escapeHtml(block.emptyHistoryMessageLimit ?? 0)}"><small>0 includes all chat messages.</small></label>
                 <div class="stmc-options">
                     <label><input type="checkbox" data-field="propagate"${block.propagate ? ' checked' : ''}> Show result to subsequent blocks</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="keepOnSwipe"${block.keepOnSwipe ? ' checked' : ''}${isDiscard ? ' disabled' : ''}> Do not regenerate on Swipe</label>
@@ -757,8 +759,11 @@ async function buildEmptyPresetPrompt(run, block, entries, context) {
         const checkpoints = getCheckpointText();
         if (checkpoints) parts.push(checkpoints);
     }
-    const history = (context.chat ?? [])
+    const historyLimit = Math.max(0, Math.floor(Number(block.emptyHistoryMessageLimit) || 0));
+    const historyMessages = (context.chat ?? [])
         .filter(message => !message?.is_system)
+    const selectedHistory = historyLimit > 0 ? historyMessages.slice(-historyLimit) : historyMessages;
+    const history = selectedHistory
         .map(message => `${message.is_user ? context.name1 : (message.name || context.name2)}: ${String(message.mes ?? '')}`)
         .join('\n\n');
     if (history) parts.push(history);
