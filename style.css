@@ -35,9 +35,9 @@
 
 #st-message-constructor-panel .stmc-pipeline {
     display: grid;
-    gap: 10px;
+    gap: 4px;
     margin: 12px 0;
-    padding: 10px 0;
+    padding: 6px 0;
     border-top: 2px solid var(--SmartThemeBorderColor, #888);
     border-bottom: 2px solid var(--SmartThemeBorderColor, #888);
 }
@@ -48,7 +48,11 @@
 }
 
 #st-message-constructor-panel .stmc-insert-row button {
-    min-width: 36px;
+    width: 32px;
+    min-width: 32px;
+    min-height: 0;
+    height: 28px;
+    padding: 0;
 }
 
 #st-message-constructor-panel .stmc-main-marker {
