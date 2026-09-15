@@ -736,7 +736,13 @@ function createRun(type, options = {}) {
         continueMessage: null,
     };
     lastDiagnosticRun = run;
-    tracePipeline(run, 'run-created', { type, ...getChatDiagnostics() });
+    tracePipeline(run, 'run-created', {
+        type,
+        presetSource: sourcePipeline ? 'source-swipe' : 'active-preset',
+        preBlockCount: run.presetSnapshot.blocks.filter(block => block.position === 'pre' && block.enabled !== false).length,
+        postBlockCount: run.presetSnapshot.blocks.filter(block => block.position === 'post' && block.enabled !== false).length,
+        ...getChatDiagnostics(),
+    });
     return run;
 }
 
