@@ -61,6 +61,7 @@ function newBlock(position = 'pre') {
         staticText: '',
         runCondition: 'always',
         previousOutputPattern: '',
+        promptText: '',
         quickReplySet: '',
         quickReplyLabel: '',
         position,
@@ -217,7 +218,7 @@ function isStaticBlock(block) {
 }
 
 function getRunCondition(block) {
-    return ['always', 'previous_nonempty', 'previous_matches', 'quick_reply'].includes(block.runCondition)
+    return ['always', 'previous_nonempty', 'previous_matches', 'prompt_contains', 'quick_reply'].includes(block.runCondition)
         ? block.runCondition
         : 'always';
 }
@@ -272,9 +273,11 @@ function renderBlock(block, isOpen = false) {
                         <option value="always"${runCondition === 'always' ? ' selected' : ''}>Always</option>
                         <option value="previous_nonempty"${runCondition === 'previous_nonempty' ? ' selected' : ''}>Previous block produced text</option>
                         <option value="previous_matches"${runCondition === 'previous_matches' ? ' selected' : ''}>Previous block output matches pattern</option>
+                        <option value="prompt_contains"${runCondition === 'prompt_contains' ? ' selected' : ''}>Prompt contains text</option>
                         <option value="quick_reply"${runCondition === 'quick_reply' ? ' selected' : ''}>Quick Reply returns true</option>
                     </select></label>
                     <label class="stmc-field"${runCondition === 'previous_matches' ? '' : ' hidden'}><span>Previous Output Pattern</span><textarea class="text_pole" data-field="previousOutputPattern" placeholder="JavaScript RegExp">${escapeHtml(block.previousOutputPattern ?? '')}</textarea></label>
+                    <label class="stmc-field"${runCondition === 'prompt_contains' ? '' : ' hidden'}><span>Prompt Text</span><textarea class="text_pole" data-field="promptText" placeholder="Case-sensitive text from the assembled MAIN prompt">${escapeHtml(block.promptText ?? '')}</textarea></label>
                     <div class="stmc-grid"${runCondition === 'quick_reply' ? '' : ' hidden'}>
                         <label class="stmc-field"><span>Quick Reply Set</span><input class="text_pole" data-field="quickReplySet" value="${escapeHtml(block.quickReplySet ?? '')}" placeholder="Set name"></label>
                         <label class="stmc-field"><span>Quick Reply Label</span><input class="text_pole" data-field="quickReplyLabel" value="${escapeHtml(block.quickReplyLabel ?? '')}" placeholder="Quick Reply label"></label>
@@ -391,6 +394,7 @@ function normalizeImportedPreset(value) {
         staticText: String(block.staticText ?? ''),
         runCondition: getRunCondition(block),
         previousOutputPattern: String(block.previousOutputPattern ?? ''),
+        promptText: String(block.promptText ?? ''),
         quickReplySet: String(block.quickReplySet ?? ''),
         quickReplyLabel: String(block.quickReplyLabel ?? ''),
         position: block.position === 'post' ? 'post' : 'pre',
@@ -913,6 +917,89 @@ function quickReplyReturnedTrue(result) {
     return ['true', '1', 'yes', 'on'].includes(String(result ?? '').trim().toLowerCase());
 }
 
+function flattenPromptContent(value) {
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(flattenPromptContent).filter(Boolean).join('\n');
+    if (!value || typeof value !== 'object') return '';
+    if (typeof value.text === 'string') return value.text;
+    if ('content' in value) return flattenPromptContent(value.content);
+    return '';
+}
+
+function getPromptPreviewEntries(run) {
+    return run.mainPromptPreviewEntry
+        ? run.propagated.filter(entry => entry !== run.mainPromptPreviewEntry)
+        : run.propagated;
+}
+
+function addMainPreviewToChat(run, context) {
+    const preview = run.mainPromptPreview;
+    if (!preview || preview.isStreaming || !Array.isArray(context.chat)) return () => { };
+
+    const chat = context.chat;
+    const previewText = preview.type === 'continue'
+        ? `${String(run.continueMessage?.message?.mes ?? '')}${preview.text}`
+        : preview.text;
+    const targetIndex = preview.type === 'continue'
+        ? chat.length - 1
+        : preview.messageId;
+    const target = chat[targetIndex];
+
+    if (target && !target.is_user) {
+        const originalText = target.mes;
+        target.mes = previewText;
+        return () => { target.mes = originalText; };
+    }
+
+    const virtualMessage = {
+        name: context.name2,
+        is_user: false,
+        mes: previewText,
+    };
+    chat.push(virtualMessage);
+    return () => {
+        const index = chat.lastIndexOf(virtualMessage);
+        if (index !== -1) chat.splice(index, 1);
+    };
+}
+
+/**
+ * Builds the prompt through Tavern's dry-run generation path. This is the same
+ * Prompt Manager, World Info and history assembly used by MAIN, without making
+ * a model request. The temporary pipeline context represents the blocks that
+ * have already run at this point in the pipeline.
+ */
+async function getCurrentMainPromptText(run) {
+    const context = getContext();
+    let promptCaptured = false;
+    let promptText = '';
+    const capturePrompt = (data, dryRun) => {
+        if (!dryRun) return;
+        promptCaptured = true;
+        promptText = flattenPromptContent(data?.prompt ?? data?.input ?? '');
+    };
+
+    const previewEntries = getPromptPreviewEntries(run);
+    const removeMainPreview = addMainPreviewToChat(run, context);
+    setPipelineContext(previewEntries);
+    eventSource.once(event_types.GENERATE_AFTER_DATA, capturePrompt);
+    try {
+        // Passing a signal preserves the abort controller owned by the live
+        // pipeline generation. The dry run only assembles data and never calls
+        // the backend.
+        await context.generate(run.type, { signal: new AbortController().signal }, true);
+        assertRunActive(run);
+        if (!promptCaptured) {
+            throw new Error('Tavern did not return a prepared MAIN prompt.');
+        }
+        return promptText;
+    } finally {
+        eventSource.removeListener(event_types.GENERATE_AFTER_DATA, capturePrompt);
+        removeMainPreview();
+        setPipelineContext(run.propagated);
+    }
+}
+
 async function shouldRunStaticBlock(run, block, previousOutput) {
     const condition = getRunCondition(block);
     if (condition === 'always') return true;
@@ -927,6 +1014,21 @@ async function shouldRunStaticBlock(run, block, previousOutput) {
         } catch (error) {
             throw new Error(`Previous Output Pattern in "${block.name}" is not a valid regular expression: ${error.message}`);
         }
+    }
+    if (condition === 'prompt_contains') {
+        const text = String(block.promptText ?? '');
+        if (!text) {
+            throw new Error(`Prompt Text in "${block.name}" is empty.`);
+        }
+        const prompt = await getCurrentMainPromptText(run);
+        const matched = prompt.includes(text);
+        tracePipeline(run, 'prompt-condition-checked', {
+            position: block.position,
+            promptLength: prompt.length,
+            matched,
+            ...getChatDiagnostics(),
+        });
+        return matched;
     }
     const setName = String(block.quickReplySet ?? '').trim();
     const label = String(block.quickReplyLabel ?? '').trim();
@@ -950,6 +1052,7 @@ async function shouldRunStaticBlock(run, block, previousOutput) {
 async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     tracePipeline(run, 'block-start', { position: block.position, blockType: isStaticBlock(block) ? 'static' : 'generate', ...getChatDiagnostics() });
     if (isStaticBlock(block)) {
+        run.currentBlockName = block.name;
         const previousOutput = String(run.records.at(-1)?.output ?? '').trim();
         const skipped = !await shouldRunStaticBlock(run, block, previousOutput);
         const output = skipped ? '' : processBlockOutput(run, block, block.staticText);
@@ -1061,8 +1164,20 @@ async function finalizeRun(context) {
         run.main = main;
         const postEntries = [...run.propagated];
         if (!context.isStreaming) {
-            postEntries.push({ name: 'MAIN', output: main, propagate: true });
+            const mainEntry = { name: 'MAIN', output: main, propagate: true };
+            postEntries.push(mainEntry);
+            // Non-streaming finalization happens before core saves MAIN into
+            // chat. Prompt preview therefore supplies a temporary assistant
+            // message and omits this context-only MAIN entry to avoid adding it
+            // twice under different roles.
+            run.mainPromptPreviewEntry = mainEntry;
         }
+        run.mainPromptPreview = {
+            type: context.type,
+            text: main,
+            messageId: context.messageId,
+            isStreaming: context.isStreaming,
+        };
         run.propagated = postEntries;
         for (const block of run.presetSnapshot.blocks.filter(block => block.position === 'post' && block.enabled !== false)) {
             await executeBlock(run, block, { allowSwipeReuse: run.type === 'swipe' });
@@ -1122,9 +1237,13 @@ async function prepareRun(type, options, dryRun) {
             run.continueMessage = { message, mes: message.mes };
             message.mes = main;
         }
-        await executePreBlocks(run);
-        tracePipeline(run, 'pre-complete', { ...getChatDiagnostics() });
         await applyMainState(run);
+        // Static PRE conditions can preview the actual MAIN prompt. Apply the
+        // selected MAIN connection state first, then refresh pipeline context
+        // after PRE has produced its propagated entries.
+        await executePreBlocks(run);
+        setPipelineContext(run.propagated);
+        tracePipeline(run, 'pre-complete', { ...getChatDiagnostics() });
         tracePipeline(run, 'main-context-ready', { ...getChatDiagnostics() });
     } catch (error) {
         tracePipeline(run, 'prepare-failed', { ...getChatDiagnostics() });

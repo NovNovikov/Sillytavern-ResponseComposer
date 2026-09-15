@@ -13,7 +13,7 @@ PRE blocks → MAIN → POST blocks → one saved assistant message
 - Sequential `PRE → MAIN → POST` pipeline.
 - LLM and static-text auxiliary blocks.
 - Per-block enable switch, output visibility, regex processing and output extraction.
-- Static blocks can run always, when the preceding output matches a JavaScript RegExp, or when a Quick Reply returns `true`.
+- Static blocks can run always, when the preceding output matches a JavaScript RegExp, when the assembled MAIN prompt contains text, or when a Quick Reply returns `true`.
 - PRE results are propagated after chat history and before Post-History Instruction.
 - POST results are assembled into the same visible assistant message as MAIN.
 - Swipe, regenerate and continue support. A block can be kept on a swipe.
@@ -73,7 +73,9 @@ With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options
 
 ### Output and conditions
 
-`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. A static block can test the immediately preceding additional block with a JavaScript RegExp, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`.
+`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. A static block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`.
+
+**Prompt contains text** uses Tavern's normal dry-run prompt assembly. A PRE block checks the prompt that MAIN will receive after preceding PRE outputs have been propagated. A POST block checks the prompt that a further MAIN generation would receive at that point, including the current MAIN reply and preceding POST outputs. It does not send a request to the model.
 
 **Output Extraction** accepts a JavaScript RegExp. If it has a capture group, the first capture group becomes the output; otherwise the entire match is used.
 
