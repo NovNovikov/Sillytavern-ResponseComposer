@@ -235,11 +235,13 @@ function renderBlock(block, isOpen = false) {
             <summary>
                 <span class="stmc-block-name">${escapeHtml(block.name || 'Additional Block')}</span>
                 <span class="stmc-block-position">${block.position === 'pre' ? 'PRE' : 'POST'}</span>
-                <button type="button" class="stmc-block-delete fa-solid fa-trash-can" data-action="delete" aria-label="Delete block" title="Delete block"></button>
-                <button type="button" class="menu_button stmc-action-button stmc-block-action fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
-                <button type="button" class="menu_button stmc-action-button stmc-block-action fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
-                <button type="button" class="menu_button stmc-action-button stmc-block-action ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
-                <button type="button" class="stmc-block-toggle fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}" data-action="toggle-block" role="switch" aria-checked="${isEnabled}" title="${isEnabled ? 'Disable block' : 'Enable block'}"></button>
+                <div class="stmc-block-summary-actions">
+                    <button type="button" class="stmc-block-header-action fa-solid fa-trash-can" data-action="delete" aria-label="Delete block" title="Delete block"></button>
+                    <button type="button" class="stmc-block-header-action fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
+                    <button type="button" class="stmc-block-header-action fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
+                    <button type="button" class="stmc-block-header-action ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
+                    <button type="button" class="stmc-block-toggle fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}" data-action="toggle-block" role="switch" aria-checked="${isEnabled}" title="${isEnabled ? 'Disable block' : 'Enable block'}"></button>
+                </div>
             </summary>
             <div class="stmc-block-content">
                 <div class="stmc-grid">

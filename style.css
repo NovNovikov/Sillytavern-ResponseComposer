@@ -13,18 +13,6 @@
     gap: 7px;
 }
 
-#st-message-constructor-panel .stmc-action-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 36px;
-    width: 36px;
-    min-width: 36px;
-    height: 34px;
-    padding: 0;
-    line-height: 1;
-}
-
 #st-message-constructor-panel .stmc-preset-manager {
     display: grid;
     gap: 8px;
@@ -78,7 +66,7 @@
 #st-message-constructor-panel .stmc-block summary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
     padding: 9px 10px;
     cursor: pointer;
 }
@@ -100,32 +88,47 @@
     background: var(--black30a, rgba(0, 0, 0, 0.2));
 }
 
-#st-message-constructor-panel .stmc-block-delete {
-    flex: 0 0 auto;
-    width: 32px;
-    min-width: 32px;
-    height: 32px;
+#st-message-constructor-panel .stmc-block-summary-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 2px;
+}
+
+#st-message-constructor-panel .stmc-block-header-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 25px;
+    width: 25px;
+    min-width: 25px;
+    height: 25px;
     padding: 0;
-    border: 1px solid var(--SmartThemeBorderColor, #888);
-    border-radius: 6px;
-    background: var(--black30a, rgba(0, 0, 0, 0.2));
-    color: var(--SmartThemeBodyColor, #c7d0d9);
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--grey70a, #8a8a8a);
+    font-size: 0.9em;
     cursor: pointer;
 }
 
-#st-message-constructor-panel .stmc-block-delete:hover {
+#st-message-constructor-panel .stmc-block-header-action:hover {
+    color: var(--SmartThemeBodyColor, #c7d0d9);
+    background: var(--black30a, rgba(0, 0, 0, 0.2));
+}
+
+#st-message-constructor-panel .stmc-block-header-action.fa-trash-can:hover {
     color: var(--warning, #e58b8b);
-    filter: brightness(1.15);
 }
 
 #st-message-constructor-panel .stmc-block-toggle {
     flex: 0 0 auto;
     border: 0;
     padding: 0;
-    min-width: 28px;
+    min-width: 25px;
     background: transparent;
     color: var(--active, #70b7a6);
-    font-size: 1.5em;
+    font-size: 1.35em;
     line-height: 1;
     cursor: pointer;
 }
