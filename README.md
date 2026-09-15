@@ -31,7 +31,7 @@ The required core commits are bundled with the extension. They were created agai
 
 Double-click [`Install-Core-Hooks.cmd`](Install-Core-Hooks.cmd), choose the SillyTavern source directory (the folder containing `.git` and `public\script.js`), and let it complete. It applies the bundled hooks in the required order.
 
-The installer checks whether the hooks already exist and exits without changing the checkout in that case. It also refuses a checkout with uncommitted changes, checks for an existing rebase, and aborts its own failed patch attempt. Git for Windows is required.
+The installer checks whether the hooks already exist and exits without changing the checkout in that case. It supports the base checkout `9d7e6ab64` and descendants of that commit. If the selected Tavern is an older release or an unrelated fork, it stops before changing anything; this avoids applying a patch to a superficially similar but incompatible core. It also refuses a checkout with uncommitted changes, checks for an existing rebase, and aborts its own failed patch attempt. Git for Windows is required.
 
 For unattended use, pass the checkout path explicitly:
 
