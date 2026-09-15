@@ -6,7 +6,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $patchDirectory = Join-Path $scriptRoot 'patches'
-$expectedBaseCommit = '9d7e6ab64'
 
 function Test-SillyTavernRoot {
     param([string]$Path)
@@ -60,16 +59,6 @@ try {
     if (Test-CoreHooksInstalled $SillyTavernPath) {
         Write-Host 'Multi-Stage Response Composer core hooks are already installed.' -ForegroundColor Green
         exit 0
-    }
-
-    & git -C $SillyTavernPath cat-file -e "$expectedBaseCommit^{commit}"
-    if ($LASTEXITCODE -ne 0) {
-        throw "This SillyTavern checkout does not contain the supported base commit $expectedBaseCommit. Update to a compatible release or use the matching fork before running the installer."
-    }
-
-    & git -C $SillyTavernPath merge-base --is-ancestor $expectedBaseCommit HEAD
-    if ($LASTEXITCODE -ne 0) {
-        throw "This SillyTavern checkout is older than or unrelated to the supported base commit $expectedBaseCommit. No changes were made."
     }
 
     $patches = @(Get-ChildItem $patchDirectory -Filter '*.patch' -File | Sort-Object Name)
