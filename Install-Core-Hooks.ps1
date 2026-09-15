@@ -31,7 +31,7 @@ function Select-SillyTavernRoot {
     return $dialog.SelectedPath
 }
 
-function Test-CoreHooksInstalled {
+function Test-BaseCoreHooksInstalled {
     param([string]$Root)
 
     $script = Get-Content (Join-Path $Root 'public\script.js') -Raw
@@ -40,6 +40,17 @@ function Test-CoreHooksInstalled {
     return $script.Contains('registerGenerationFinalizer') -and
         $script.Contains('prepareChatCompletionMessages') -and
         $context.Contains('prepareChatCompletionMessages')
+}
+
+function Test-CoreHooksInstalled {
+    param([string]$Root)
+
+    if (-not (Test-BaseCoreHooksInstalled $Root)) {
+        return $false
+    }
+
+    $requestService = Get-Content (Join-Path $Root 'public\scripts\custom-request.js') -Raw
+    return $requestService.Contains('settings.chat_completion_source = overridePayload.chat_completion_source;')
 }
 
 try {
@@ -66,6 +77,14 @@ try {
         throw 'The bundled core patch series is missing.'
     }
 
+    $isCoreHookUpdate = Test-BaseCoreHooksInstalled $SillyTavernPath
+    if ($isCoreHookUpdate) {
+        $patches = @($patches | Where-Object Name -eq '0011-fix-use-connection-profile-source-for-request-preset.patch')
+        if ($patches.Count -ne 1) {
+            throw 'The bundled Connection Manager update patch is missing.'
+        }
+    }
+
     $status = & git -C $SillyTavernPath status --porcelain
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not read the Git status of the selected checkout.'
@@ -85,7 +104,8 @@ try {
         throw 'This checkout already has a rebase or git am operation in progress. Finish or abort it first.'
     }
 
-    Write-Host 'Applying Multi-Stage Response Composer core hooks...' -ForegroundColor Cyan
+    $operation = if ($isCoreHookUpdate) { 'Updating Multi-Stage Response Composer core hooks...' } else { 'Applying Multi-Stage Response Composer core hooks...' }
+    Write-Host $operation -ForegroundColor Cyan
     $gitArguments = @('-C', $SillyTavernPath, 'am', '--3way') + @($patches.FullName)
     & git @gitArguments
     if ($LASTEXITCODE -ne 0) {
