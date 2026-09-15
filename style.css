@@ -205,7 +205,7 @@
 }
 
 #st-message-constructor-panel [hidden] {
-    display: none;
+    display: none !important;
 }
 
 #st-message-constructor-panel textarea {
