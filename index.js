@@ -684,6 +684,15 @@ function findSourceBlock(run, block) {
     return run.sourcePipeline?.blocks?.find(candidate => candidate?.id === block.id && candidate?.position === block.position);
 }
 
+function getKeepOnSwipeSetting(run, block) {
+    if (run.type !== 'swipe') return Boolean(block.keepOnSwipe);
+    // Source snapshots preserve the block order and prior output. The switch
+    // is a user command for the next swipe, so honor its current value when
+    // the active preset still contains this stable block ID.
+    const currentBlock = getActivePreset()?.blocks?.find(candidate => candidate?.id === block.id && candidate?.position === block.position);
+    return currentBlock ? Boolean(currentBlock.keepOnSwipe) : Boolean(block.keepOnSwipe);
+}
+
 function getSourcePipeline(type, sourceSwipeId = null) {
     const target = getContext().chat.at(-1);
     if (!target?.extra?.[PIPELINE_METADATA_KEY]) return null;
@@ -1180,17 +1189,19 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
         return record;
     }
     const sourceBlock = allowSwipeReuse ? findSourceBlock(run, block) : null;
+    const keepOnSwipe = getKeepOnSwipeSetting(run, block);
     if (allowSwipeReuse) {
         tracePipeline(run, 'block-reuse-check', {
             position: block.position,
-            keepOnSwipe: Boolean(block.keepOnSwipe),
+            keepOnSwipe,
+            snapshotKeepOnSwipe: Boolean(block.keepOnSwipe),
             sourceFound: Boolean(sourceBlock),
             sourceHasStoredOutput: typeof sourceBlock?.output === 'string',
             sourceVisibility: sourceBlock?.visibility ?? null,
             ...getChatDiagnostics(),
         });
     }
-    const source = block.keepOnSwipe ? sourceBlock : null;
+    const source = keepOnSwipe ? sourceBlock : null;
     if (source && typeof source.output === 'string') {
         const record = createPersistedBlock(block, source.output, true);
         run.records.push(record);
