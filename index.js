@@ -209,6 +209,14 @@ function tracePipeline(run, stage, details = {}) {
     renderDiagnostics();
 }
 
+function getErrorDiagnostics(error) {
+    const message = String(error?.message ?? error ?? '').replaceAll(/\s+/g, ' ').trim();
+    return {
+        errorName: String(error?.name ?? typeof error),
+        errorMessage: message.slice(0, 500),
+    };
+}
+
 function getBlock(preset, id) {
     return preset.blocks.find(block => block.id === id);
 }
@@ -1042,6 +1050,14 @@ async function generateBlock(run, block, entries) {
             ...getChatDiagnostics(),
         });
         return output;
+    } catch (error) {
+        tracePipeline(run, 'auxiliary-failed', {
+            position: block.position,
+            blockType: block.type,
+            ...getErrorDiagnostics(error),
+            ...getChatDiagnostics(),
+        });
+        throw error;
     } finally {
         auxiliaryDepth--;
     }
@@ -1418,7 +1434,7 @@ async function prepareRun(type, options, dryRun) {
         tracePipeline(run, 'pre-complete', { ...getChatDiagnostics() });
         tracePipeline(run, 'main-context-ready', { ...getChatDiagnostics() });
     } catch (error) {
-        tracePipeline(run, 'prepare-failed', { ...getChatDiagnostics() });
+        tracePipeline(run, 'prepare-failed', { ...getErrorDiagnostics(error), ...getChatDiagnostics() });
         if (!isAbortError(error)) {
             toastr.error(`Multi-Stage Composer: PRE block failed: ${error.message || error}`);
         }
