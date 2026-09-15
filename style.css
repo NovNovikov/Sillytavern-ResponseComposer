@@ -14,7 +14,9 @@
 }
 
 #st-message-constructor-panel .stmc-actions .menu_button {
-    min-height: 36px;
+    min-height: 0;
+    height: 32px;
+    padding: 0 8px;
     white-space: nowrap;
 }
 
