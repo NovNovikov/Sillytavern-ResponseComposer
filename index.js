@@ -911,6 +911,15 @@ async function generateBlock(run, block, entries) {
             promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
             ...getChatDiagnostics(),
         });
+        tracePipeline(run, 'auxiliary-request-route', {
+            position: block.position,
+            transport: profile ? 'connection-manager' : 'main-api',
+            apiType: profile?.type ?? context.mainApi,
+            promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
+            usesPromptManager: block.oaiPresetId !== EMPTY_PRESET,
+            serverTemplateEligible: profile?.type === 'openai' && Array.isArray(prompt),
+            ...getChatDiagnostics(),
+        });
         // generateQuietPrompt() re-enters Generate(), which owns the active chat,
         // input field and streaming UI. Auxiliary stages must never take ownership
         // of those objects. Do not switch the connection-profile or preset UI here:
