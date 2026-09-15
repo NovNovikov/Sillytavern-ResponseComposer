@@ -236,6 +236,9 @@ function renderBlock(block, isOpen = false) {
                 <span class="stmc-block-name">${escapeHtml(block.name || 'Additional Block')}</span>
                 <span class="stmc-block-position">${block.position === 'pre' ? 'PRE' : 'POST'}</span>
                 <button type="button" class="stmc-block-delete fa-solid fa-trash-can" data-action="delete" aria-label="Delete block" title="Delete block"></button>
+                <button type="button" class="menu_button stmc-action-button stmc-block-action fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
+                <button type="button" class="menu_button stmc-action-button stmc-block-action fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
+                <button type="button" class="menu_button stmc-action-button stmc-block-action ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
                 <button type="button" class="stmc-block-toggle fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}" data-action="toggle-block" role="switch" aria-checked="${isEnabled}" title="${isEnabled ? 'Disable block' : 'Enable block'}"></button>
             </summary>
             <div class="stmc-block-content">
@@ -286,11 +289,6 @@ function renderBlock(block, isOpen = false) {
                     <label class="stmc-field"><span>Post-History Instruction</span><textarea class="text_pole" data-field="additionalInstructions.postHistory">${escapeHtml(instructions.postHistory)}</textarea></label>
                 </div>
                 <label class="stmc-field"><span>Output Extraction</span><textarea class="text_pole" data-field="regex.extraction" placeholder="JavaScript RegExp; first capture group is kept">${escapeHtml(block.regex?.extraction ?? '')}</textarea></label>
-                <div class="stmc-block-controls">
-                    <button type="button" class="menu_button stmc-action-button fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
-                    <button type="button" class="menu_button stmc-action-button fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
-                    <button type="button" class="menu_button stmc-action-button ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
-                </div>
             </div>
         </details>`;
 }
@@ -510,7 +508,7 @@ function bindEvents() {
         if (!button) return;
         const block = getBlock(getActivePreset(), button.closest('[data-block-id]')?.dataset.blockId);
         if (!block) return;
-        if (button.dataset.action === 'toggle-block' || button.dataset.action === 'delete') {
+        if (button.closest('summary') || button.dataset.action === 'toggle-block' || button.dataset.action === 'delete') {
             event.preventDefault();
             event.stopPropagation();
         }
