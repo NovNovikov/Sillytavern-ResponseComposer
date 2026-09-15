@@ -235,6 +235,7 @@ function renderBlock(block, isOpen = false) {
             <summary>
                 <span class="stmc-block-name">${escapeHtml(block.name || 'Additional Block')}</span>
                 <span class="stmc-block-position">${block.position === 'pre' ? 'PRE' : 'POST'}</span>
+                <button type="button" class="stmc-block-delete fa-solid fa-trash-can" data-action="delete" aria-label="Delete block" title="Delete block"></button>
                 <button type="button" class="stmc-block-toggle fa-solid ${isEnabled ? 'fa-toggle-on' : 'fa-toggle-off'}" data-action="toggle-block" role="switch" aria-checked="${isEnabled}" title="${isEnabled ? 'Disable block' : 'Enable block'}"></button>
             </summary>
             <div class="stmc-block-content">
@@ -286,10 +287,9 @@ function renderBlock(block, isOpen = false) {
                 </div>
                 <label class="stmc-field"><span>Output Extraction</span><textarea class="text_pole" data-field="regex.extraction" placeholder="JavaScript RegExp; first capture group is kept">${escapeHtml(block.regex?.extraction ?? '')}</textarea></label>
                 <div class="stmc-block-controls">
-                    <button class="menu_button" data-action="move-up">Move up</button>
-                    <button class="menu_button" data-action="move-down">Move down</button>
-                    <button class="menu_button" data-action="move-across">Move ${block.position === 'pre' ? 'after' : 'before'} MAIN</button>
-                    <button class="menu_button" data-action="delete">− Delete block</button>
+                    <button type="button" class="menu_button stmc-action-button fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
+                    <button type="button" class="menu_button stmc-action-button fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
+                    <button type="button" class="menu_button stmc-action-button ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
                 </div>
             </div>
         </details>`;
@@ -510,10 +510,12 @@ function bindEvents() {
         if (!button) return;
         const block = getBlock(getActivePreset(), button.closest('[data-block-id]')?.dataset.blockId);
         if (!block) return;
+        if (button.dataset.action === 'toggle-block' || button.dataset.action === 'delete') {
+            event.preventDefault();
+            event.stopPropagation();
+        }
         switch (button.dataset.action) {
             case 'toggle-block':
-                event.preventDefault();
-                event.stopPropagation();
                 block.enabled = block.enabled === false;
                 saveSettings();
                 renderPipeline();
