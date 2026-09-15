@@ -13,6 +13,11 @@
     gap: 7px;
 }
 
+#st-message-constructor-panel .stmc-actions .menu_button {
+    min-height: 36px;
+    white-space: nowrap;
+}
+
 #st-message-constructor-panel .stmc-preset-manager {
     display: grid;
     gap: 8px;
