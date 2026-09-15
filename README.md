@@ -77,7 +77,9 @@ With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options
 
 **Prompt contains text** uses Tavern's normal dry-run prompt assembly. A PRE block checks the prompt that MAIN will receive after preceding PRE outputs have been propagated. A POST block checks the prompt that a further MAIN generation would receive at that point, including the current MAIN reply and preceding POST outputs. It does not send a request to the model.
 
-**Apply SillyTavern Regex** processes a Generate block's assembled prompt before it is sent and its returned output afterward. Prompt processing uses Tavern's prompt-only Regex Scripts: chat-completion messages use their user/assistant placement and a text-completion prompt uses User Input. **Output Extraction** then accepts a JavaScript RegExp; if it has a capture group, the first capture group becomes the output; otherwise the entire match is used.
+**Use Regex and QR** is the master switch for both behaviours below. When it is enabled, **Apply SillyTavern Regex and before-generation Quick Replies** on a Generate block runs the active Quick Replies marked **Execute before message generation** immediately before Composer assembles that block's request. It uses Tavern's standard Quick Reply lifecycle, so global, chat and character Quick Reply sets follow their ordinary enablement and recursion safeguards.
+
+The same block option also processes the assembled prompt with SillyTavern Regex before sending it and processes the returned output afterward. Prompt processing uses Tavern's prompt-only Regex Scripts: chat-completion messages use their user/assistant placement and a text-completion prompt uses User Input. A Static Text block has no request, so its option is labelled **Apply SillyTavern Regex** and only processes its output. **Output Extraction** then accepts a JavaScript RegExp; if it has a capture group, the first capture group becomes the output; otherwise the entire match is used.
 
 ## Development
 
