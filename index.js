@@ -253,6 +253,7 @@ function renderBlock(block, isOpen = false) {
                 <span class="stmc-block-position">${block.position === 'pre' ? 'PRE' : 'POST'}</span>
                 <div class="stmc-block-summary-actions">
                     <button type="button" class="stmc-block-header-action fa-solid fa-trash-can" data-action="delete" aria-label="Delete block" title="Delete block"></button>
+                    <button type="button" class="stmc-block-header-action fa-solid fa-copy" data-action="duplicate" aria-label="Duplicate block" title="Duplicate block"></button>
                     <button type="button" class="stmc-block-header-action fa-solid fa-arrow-up" data-action="move-up" aria-label="Move block up" title="Move block up"></button>
                     <button type="button" class="stmc-block-header-action fa-solid fa-arrow-down" data-action="move-down" aria-label="Move block down" title="Move block down"></button>
                     <button type="button" class="stmc-block-header-action ${block.position === 'pre' ? 'fa-solid fa-arrow-right' : 'fa-solid fa-arrow-left'}" data-action="move-across" aria-label="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN" title="Move block ${block.position === 'pre' ? 'after' : 'before'} MAIN"></button>
@@ -385,6 +386,18 @@ function insertBlock(position, index) {
     preset.blocks.splice(insertAt, 0, block);
     saveSettings();
     render();
+}
+
+function duplicateBlock(block) {
+    const preset = getActivePreset();
+    const sourceIndex = preset.blocks.indexOf(block);
+    if (sourceIndex === -1) return;
+    const duplicate = clone(block);
+    duplicate.id = newId();
+    duplicate.name = `${String(block.name || 'Additional Block')} Copy`;
+    preset.blocks.splice(sourceIndex + 1, 0, duplicate);
+    saveSettings();
+    renderPipeline();
 }
 
 function moveBlock(block, direction) {
@@ -549,7 +562,7 @@ function bindEvents() {
         if (!button) return;
         const block = getBlock(getActivePreset(), button.closest('[data-block-id]')?.dataset.blockId);
         if (!block) return;
-        if (button.closest('summary') || button.dataset.action === 'toggle-block' || button.dataset.action === 'delete') {
+        if (button.closest('summary') || button.dataset.action === 'toggle-block' || button.dataset.action === 'delete' || button.dataset.action === 'duplicate') {
             event.preventDefault();
             event.stopPropagation();
         }
@@ -559,6 +572,7 @@ function bindEvents() {
                 saveSettings();
                 renderPipeline();
                 break;
+            case 'duplicate': duplicateBlock(block); break;
             case 'move-up': moveBlock(block, -1); break;
             case 'move-down': moveBlock(block, 1); break;
             case 'move-across': moveBlockAcrossMain(block); break;
