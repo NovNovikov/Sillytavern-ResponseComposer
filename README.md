@@ -13,7 +13,7 @@ PRE blocks → MAIN → POST blocks → one saved assistant message
 - Sequential `PRE → MAIN → POST` pipeline.
 - LLM and static-text auxiliary blocks.
 - Per-block enable switch, output visibility, regex processing and output extraction.
-- Static blocks can run always, when the preceding output matches a JavaScript RegExp, when the assembled MAIN prompt contains text, or when a Quick Reply returns `true`.
+- Any block can run always, when the preceding output matches a JavaScript RegExp, when the assembled MAIN prompt contains text, or when a Quick Reply returns `true`.
 - PRE results are propagated after chat history and before Post-History Instruction.
 - POST results are assembled into the same visible assistant message as MAIN.
 - Swipe, regenerate and continue support. A block can be kept on a swipe; its current switch setting controls the next swipe while the source swipe supplies the stored output.
@@ -70,11 +70,11 @@ These fields intentionally have separate jobs:
 - **Connection Profile** selects API source, endpoint, model, credentials and the profile's generation preset. Its preset supplies request settings, including Custom endpoint **Additional Parameters** such as `chat_template_kwargs`.
 - **Prompt OAI Preset** selects Prompt Manager composition for the auxiliary request: prompt order, Character/Persona/Personality/Scenario, World Info and checkpoint entries. It does not replace the profile's request settings.
 
-With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options under **Add additional instructions** control whether Persona Description, Char Description, Char Personality, Scenario, Worldbook and Summarized Checkpoints are inserted. For a Chat Completion profile, Composer sends these parts and the selected history as structured system/user/assistant messages so the backend's chat template is applied to the same role structure as MAIN. Hidden chat messages are excluded in every auxiliary history path. The Summarized Checkpoints option is shown only while the Checkpoint Summarize extension is installed and enabled. **Empty Preset: last chat messages** limits the manually assembled history to its last `N` visible messages; `0` includes the full visible chat history. Connection Profile request parameters still apply.
+With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options under **Add additional instructions** separately control Persona Description/Char Description/Char Personality, Scenario, Worldbook and Summarized Checkpoints. For a Chat Completion profile, Composer sends these parts and the selected history as structured system/user/assistant messages so the backend's chat template is applied to the same role structure as MAIN. Hidden chat messages are excluded in every auxiliary history path. The Summarized Checkpoints option is shown only while the Checkpoint Summarize extension is installed and enabled. **Empty Preset: last chat messages** limits the manually assembled history to its last `N` visible messages; `0` includes the full visible chat history. Connection Profile request parameters still apply.
 
 ### Output and conditions
 
-`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. A static block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`.
+`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. Any block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`. A Generate block whose condition is false makes no LLM request and returns an empty result.
 
 **Prompt contains text** uses Tavern's normal dry-run prompt assembly. A PRE block checks the prompt that MAIN will receive after preceding PRE outputs have been propagated. A POST block checks the prompt that a further MAIN generation would receive at that point, including the current MAIN reply and preceding POST outputs. It does not send a request to the model.
 

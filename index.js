@@ -41,6 +41,7 @@ function newAdditionalInstructions() {
         enabled: false,
         beginning: '',
         includeCharacter: false,
+        includeScenario: false,
         includeWorldbook: false,
         includeCheckpoints: false,
         postHistory: '',
@@ -278,6 +279,8 @@ function renderBlock(block, isOpen = false) {
                 </div>
                 <div class="stmc-static-fields"${isStatic ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Text</span><textarea class="text_pole" data-field="staticText">${escapeHtml(block.staticText ?? '')}</textarea></label>
+                </div>
+                <div class="stmc-conditions">
                     <label class="stmc-field"><span>Run Condition</span><select class="text_pole" data-field="runCondition">
                         <option value="always"${runCondition === 'always' ? ' selected' : ''}>Always</option>
                         <option value="previous_nonempty"${runCondition === 'previous_nonempty' ? ' selected' : ''}>Previous block produced text</option>
@@ -295,7 +298,8 @@ function renderBlock(block, isOpen = false) {
                 <div class="stmc-instructions"${!isStatic && instructions.enabled ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Beginning Instruction</span><textarea class="text_pole" data-field="additionalInstructions.beginning">${escapeHtml(instructions.beginning)}</textarea></label>
                     <div class="stmc-options"${isEmptyPreset ? '' : ' hidden'}>
-                        <label><input type="checkbox" data-field="additionalInstructions.includeCharacter"${instructions.includeCharacter ? ' checked' : ''}> Persona, Character Description, Personality & Scenario</label>
+                        <label><input type="checkbox" data-field="additionalInstructions.includeCharacter"${instructions.includeCharacter ? ' checked' : ''}> Persona, Character Description & Personality</label>
+                        <label><input type="checkbox" data-field="additionalInstructions.includeScenario"${instructions.includeScenario ? ' checked' : ''}> Scenario</label>
                         <label><input type="checkbox" data-field="additionalInstructions.includeWorldbook"${instructions.includeWorldbook ? ' checked' : ''}> Worldbook</label>
                         <label${hasCheckpointSummarize ? '' : ' hidden'}><input type="checkbox" data-field="additionalInstructions.includeCheckpoints"${instructions.includeCheckpoints ? ' checked' : ''}> Summarized Checkpoints</label>
                     </div>
@@ -801,10 +805,14 @@ function getEmptyPresetContextParts(block, context) {
     if (instructions.enabled && instructions.beginning.trim()) parts.push(instructions.beginning.trim());
     if (instructions.enabled && instructions.includeCharacter) {
         const fields = context.getCharacterCardFields?.() ?? {};
-        const characterParts = [fields.persona, fields.description, fields.personality, fields.scenario]
+        const characterParts = [fields.persona, fields.description, fields.personality]
             .map(value => String(value ?? '').trim())
             .filter(Boolean);
         if (characterParts.length) parts.push(characterParts.join('\n\n'));
+    }
+    if (instructions.enabled && instructions.includeScenario) {
+        const scenario = String(context.getCharacterCardFields?.()?.scenario ?? '').trim();
+        if (scenario) parts.push(scenario);
     }
     return parts;
 }
@@ -1173,7 +1181,7 @@ async function getCurrentMainPromptText(run) {
     }
 }
 
-async function shouldRunStaticBlock(run, block, previousOutput) {
+async function shouldRunBlock(run, block, previousOutput) {
     const condition = getRunCondition(block);
     if (condition === 'always') return true;
     if (condition === 'previous_nonempty') return Boolean(previousOutput);
@@ -1224,12 +1232,18 @@ async function shouldRunStaticBlock(run, block, previousOutput) {
 
 async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     tracePipeline(run, 'block-start', { position: block.position, blockType: isStaticBlock(block) ? 'static' : 'generate', ...getChatDiagnostics() });
+    run.currentBlockName = block.name;
+    const previousOutput = String(run.records.at(-1)?.output ?? '').trim();
+    const skipped = !await shouldRunBlock(run, block, previousOutput);
+    if (skipped) {
+        const record = createPersistedBlock(block, '', false, true);
+        run.records.push(record);
+        tracePipeline(run, 'block-complete', { position: block.position, skipped: true, outputLength: 0, ...getChatDiagnostics() });
+        return record;
+    }
     if (isStaticBlock(block)) {
-        run.currentBlockName = block.name;
-        const previousOutput = String(run.records.at(-1)?.output ?? '').trim();
-        const skipped = !await shouldRunStaticBlock(run, block, previousOutput);
-        const output = skipped ? '' : processBlockOutput(run, block, block.staticText);
-        const record = createPersistedBlock(block, output, false, skipped);
+        const output = processBlockOutput(run, block, block.staticText);
+        const record = createPersistedBlock(block, output, false);
         run.records.push(record);
         if (record.propagate && output) run.propagated.push(record);
         tracePipeline(run, 'block-complete', { position: block.position, skipped, outputLength: output.length, ...getChatDiagnostics() });
@@ -1257,7 +1271,6 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
         tracePipeline(run, 'block-reused', { position: block.position, outputLength: record.output.length, ...getChatDiagnostics() });
         return record;
     }
-    run.currentBlockName = block.name;
     const output = await generateBlock(run, block, run.propagated);
     const record = createPersistedBlock(block, output, false);
     run.records.push(record);
