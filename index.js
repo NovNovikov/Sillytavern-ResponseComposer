@@ -66,6 +66,9 @@ function newBlock(position = 'pre') {
         promptText: '',
         quickReplySet: '',
         quickReplyLabel: '',
+        variableScope: 'local',
+        variableName: '',
+        variablePattern: '',
         position,
         connectionProfileId: '',
         oaiPresetId: EMPTY_PRESET,
@@ -228,7 +231,7 @@ function isStaticBlock(block) {
 }
 
 function getRunCondition(block) {
-    return ['always', 'previous_nonempty', 'previous_matches', 'prompt_contains', 'quick_reply'].includes(block.runCondition)
+    return ['always', 'previous_nonempty', 'previous_matches', 'prompt_contains', 'quick_reply', 'variable_matches'].includes(block.runCondition)
         ? block.runCondition
         : 'always';
 }
@@ -288,6 +291,7 @@ function renderBlock(block, isOpen = false) {
                         <option value="previous_matches"${runCondition === 'previous_matches' ? ' selected' : ''}>Previous block output matches pattern</option>
                         <option value="prompt_contains"${runCondition === 'prompt_contains' ? ' selected' : ''}>Prompt contains text</option>
                         <option value="quick_reply"${runCondition === 'quick_reply' ? ' selected' : ''}>Quick Reply returns true</option>
+                        <option value="variable_matches"${runCondition === 'variable_matches' ? ' selected' : ''}>Tavern variable matches pattern</option>
                     </select></label>
                     <label${runCondition === 'always' ? ' hidden' : ''}><input type="checkbox" data-field="invertCondition"${block.invertCondition ? ' checked' : ''}> Invert condition</label>
                     <label class="stmc-field"${runCondition === 'previous_matches' ? '' : ' hidden'}><span>Previous Output Pattern</span><textarea class="text_pole" data-field="previousOutputPattern" placeholder="JavaScript RegExp">${escapeHtml(block.previousOutputPattern ?? '')}</textarea></label>
@@ -296,6 +300,14 @@ function renderBlock(block, isOpen = false) {
                         <label class="stmc-field"><span>Quick Reply Set</span><input class="text_pole" data-field="quickReplySet" value="${escapeHtml(block.quickReplySet ?? '')}" placeholder="Set name"></label>
                         <label class="stmc-field"><span>Quick Reply Label</span><input class="text_pole" data-field="quickReplyLabel" value="${escapeHtml(block.quickReplyLabel ?? '')}" placeholder="Quick Reply label"></label>
                     </div>
+                    <div class="stmc-grid"${runCondition === 'variable_matches' ? '' : ' hidden'}>
+                        <label class="stmc-field"><span>Variable Scope</span><select class="text_pole" data-field="variableScope">
+                            <option value="local"${block.variableScope === 'global' ? '' : ' selected'}>Local chat variable (/setvar)</option>
+                            <option value="global"${block.variableScope === 'global' ? ' selected' : ''}>Global variable (/setglobalvar)</option>
+                        </select></label>
+                        <label class="stmc-field"><span>Variable Name</span><input class="text_pole" data-field="variableName" value="${escapeHtml(block.variableName ?? '')}" placeholder="mode"></label>
+                    </div>
+                    <label class="stmc-field"${runCondition === 'variable_matches' ? '' : ' hidden'}><span>Variable Pattern</span><textarea class="text_pole" data-field="variablePattern" placeholder="JavaScript RegExp, for example ^ooc$">${escapeHtml(block.variablePattern ?? '')}</textarea></label>
                 </div>
                 <div class="stmc-instructions"${!isStatic && instructions.enabled ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Beginning Instruction</span><textarea class="text_pole" data-field="additionalInstructions.beginning">${escapeHtml(instructions.beginning)}</textarea></label>
@@ -413,6 +425,9 @@ function normalizeImportedPreset(value) {
         promptText: String(block.promptText ?? ''),
         quickReplySet: String(block.quickReplySet ?? ''),
         quickReplyLabel: String(block.quickReplyLabel ?? ''),
+        variableScope: block.variableScope === 'global' ? 'global' : 'local',
+        variableName: String(block.variableName ?? ''),
+        variablePattern: String(block.variablePattern ?? ''),
         position: block.position === 'post' ? 'post' : 'pre',
         additionalInstructions: { ...newAdditionalInstructions(), ...(block.additionalInstructions ?? {}) },
         regex: { applySillyTavernRegex: true, extraction: '', ...(block.regex ?? {}) },
@@ -1214,7 +1229,7 @@ async function shouldRunBlock(run, block, previousOutput) {
             inverted: Boolean(block.invertCondition),
             ...getChatDiagnostics(),
         });
-    } else {
+    } else if (condition === 'quick_reply') {
         const setName = String(block.quickReplySet ?? '').trim();
         const label = String(block.quickReplyLabel ?? '').trim();
         if (!setName || !label) {
@@ -1232,6 +1247,34 @@ async function shouldRunBlock(run, block, previousOutput) {
         });
         assertRunActive(run);
         matched = quickReplyReturnedTrue(result);
+    } else {
+        const scope = block.variableScope === 'global' ? 'global' : 'local';
+        const name = String(block.variableName ?? '').trim();
+        const pattern = String(block.variablePattern ?? '').trim();
+        if (!name || !pattern) {
+            throw new Error(`Variable Name and Variable Pattern are required in "${block.name}".`);
+        }
+        const getter = getContext().variables?.[scope]?.get;
+        if (typeof getter !== 'function') {
+            throw new Error(`Tavern ${scope} variables are unavailable.`);
+        }
+        let expression;
+        try {
+            expression = new RegExp(pattern, 's');
+        } catch (error) {
+            throw new Error(`Variable Pattern in "${block.name}" is not a valid regular expression: ${error.message}`);
+        }
+        const value = String(getter(name) ?? '');
+        matched = expression.test(value);
+        tracePipeline(run, 'variable-condition-checked', {
+            position: block.position,
+            scope,
+            variableName: name,
+            valueLength: value.length,
+            matched,
+            inverted: Boolean(block.invertCondition),
+            ...getChatDiagnostics(),
+        });
     }
     return block.invertCondition ? !matched : matched;
 }
