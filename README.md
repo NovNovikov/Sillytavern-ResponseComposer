@@ -14,7 +14,7 @@ PRE blocks → MAIN → POST blocks → one saved assistant message
 - LLM and static-text auxiliary blocks.
 - Per-block enable switch, output visibility, regex processing and output extraction.
 - Any block can run always, when the preceding output matches a JavaScript RegExp, when the assembled MAIN prompt contains text, or when a Quick Reply returns `true`.
-- PRE results are propagated after chat history and before Post-History Instruction.
+- A PRE block can independently send its output to later blocks and to MAIN after chat history and before Post-History Instruction.
 - POST results are assembled into the same visible assistant message as MAIN.
 - Swipe, regenerate and continue support. A block can be kept on a swipe; its current switch setting controls the next swipe while the source swipe supplies the stored output.
 - Only MAIN reasoning is retained as normal reasoning. Auxiliary reasoning is discarded.
@@ -74,7 +74,7 @@ With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options
 
 ### Output and conditions
 
-`Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. Any block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`, or test a local `/setvar` or global `/setglobalvar` variable with a JavaScript RegExp. A Generate block whose condition is false makes no LLM request and returns an empty result.
+`Show result to subsequent blocks` makes a block's processed output available only to later auxiliary stages. **Show result to MAIN Block** is available on PRE blocks and independently adds that output to MAIN's pipeline context. Any block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`, or test a local `/setvar` or global `/setglobalvar` variable with a JavaScript RegExp. A Generate block whose condition is false makes no LLM request and returns an empty result.
 
 For a mode-detection Quick Reply, set a mode variable on every branch, for example `/setvar key=stmc_mode normal`, `/setvar key=stmc_mode ooc`, or `/setvar key=stmc_mode quick`. Set **Run Condition** to **Tavern variable matches pattern**, use local scope, set **Variable Name** to `stmc_mode`, and use an anchored pattern such as `^ooc$`. Enable **Invert condition** on blocks that should run in every mode except `ooc`.
 

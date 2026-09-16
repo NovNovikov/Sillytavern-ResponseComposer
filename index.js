@@ -75,6 +75,7 @@ function newBlock(position = 'pre') {
         emptyHistoryMessageLimit: 0,
         visibility: 'visible',
         propagate: true,
+        propagateToMain: false,
         keepOnSwipe: false,
         additionalInstructions: newAdditionalInstructions(),
         regex: {
@@ -276,6 +277,7 @@ function renderBlock(block, isOpen = false) {
                 <p class="stmc-hint"${isStatic ? ' hidden' : ''}>The Connection Profile supplies API settings and Additional Parameters. Prompt OAI Preset controls prompt composition.</p>
                 <label class="stmc-field"${isStatic || !isEmptyPreset ? ' hidden' : ''}><span>Empty Preset: last chat messages</span><input class="text_pole" type="number" min="0" step="1" data-field="emptyHistoryMessageLimit" value="${escapeHtml(block.emptyHistoryMessageLimit ?? 0)}"><small>0 includes all chat messages.</small></label>
                 <div class="stmc-options">
+                    <label${block.position === 'pre' ? '' : ' hidden'}><input type="checkbox" data-field="propagateToMain"${block.propagateToMain ? ' checked' : ''}> Show result to Main Block</label>
                     <label><input type="checkbox" data-field="propagate"${block.propagate ? ' checked' : ''}> Show result to subsequent blocks</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="keepOnSwipe"${block.keepOnSwipe ? ' checked' : ''}${isDiscard ? ' disabled' : ''}> Do not regenerate on Swipe</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="additionalInstructions.enabled"${instructions.enabled ? ' checked' : ''}> Add additional instructions</label>
@@ -425,6 +427,7 @@ function normalizeImportedPreset(value) {
         promptText: String(block.promptText ?? ''),
         quickReplySet: String(block.quickReplySet ?? ''),
         quickReplyLabel: String(block.quickReplyLabel ?? ''),
+        propagateToMain: Boolean(block.propagateToMain),
         variableScope: block.variableScope === 'global' ? 'global' : 'local',
         variableName: String(block.variableName ?? ''),
         variablePattern: String(block.variablePattern ?? ''),
@@ -608,7 +611,7 @@ async function renderUI() {
 
 function formatPipelineContext(entries) {
     const parts = entries
-        .filter(entry => entry?.propagate && typeof entry.output === 'string' && entry.output.trim())
+        .filter(entry => typeof entry?.output === 'string' && entry.output.trim())
         .map(entry => `[${entry.name || 'Additional Block'}]\n${entry.output.trim()}`);
     return parts.length
         ? `[Pipeline Context]\n${parts.join('\n\n')}\n[End Pipeline Context]\nUse this context to produce the normal assistant response.`
@@ -706,11 +709,18 @@ function createPersistedBlock(block, output, reusedOnSwipe, skipped = false, fai
         position: block.position,
         visibility: block.visibility,
         propagate: !!block.propagate,
+        propagateToMain: block.position === 'pre' && !!block.propagateToMain,
         reusedOnSwipe: !!reusedOnSwipe,
         skipped: !!skipped,
         failed: !!failed,
         output,
     };
+}
+
+function addBlockRecord(run, record) {
+    run.records.push(record);
+    if (record.propagate && record.output) run.propagated.push(record);
+    if (record.position === 'pre' && record.propagateToMain && record.output) run.mainPropagated.push(record);
 }
 
 function findSourceBlock(run, block) {
@@ -749,6 +759,7 @@ function createRun(type, options = {}) {
         sourcePipeline: sourcePipeline ? clone(sourcePipeline) : null,
         records: [],
         propagated: [],
+        mainPropagated: [],
         originalState: {
             connectionProfileId: getSelectedProfileId(),
             oaiPresetName: getSelectedOaiPresetName(),
@@ -1111,9 +1122,7 @@ function flattenPromptContent(value) {
 }
 
 function getPromptPreviewEntries(run) {
-    return run.mainPromptPreviewEntry
-        ? run.propagated.filter(entry => entry !== run.mainPromptPreviewEntry)
-        : run.propagated;
+    return run.mainPropagated;
 }
 
 function addMainPreviewToChat(run, context) {
@@ -1195,7 +1204,7 @@ async function getCurrentMainPromptText(run) {
         eventSource.removeListener(event_types.GENERATE_AFTER_DATA, capturePrompt);
         restoreRegeneratedMessage();
         removeMainPreview();
-        setPipelineContext(run.propagated);
+        setPipelineContext(run.mainPropagated);
     }
 }
 
@@ -1286,15 +1295,14 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     const skipped = !await shouldRunBlock(run, block, previousOutput);
     if (skipped) {
         const record = createPersistedBlock(block, '', false, true);
-        run.records.push(record);
+        addBlockRecord(run, record);
         tracePipeline(run, 'block-complete', { position: block.position, skipped: true, outputLength: 0, ...getChatDiagnostics() });
         return record;
     }
     if (isStaticBlock(block)) {
         const output = processBlockOutput(run, block, block.staticText);
         const record = createPersistedBlock(block, output, false);
-        run.records.push(record);
-        if (record.propagate && output) run.propagated.push(record);
+        addBlockRecord(run, record);
         tracePipeline(run, 'block-complete', { position: block.position, skipped, outputLength: output.length, ...getChatDiagnostics() });
         return record;
     }
@@ -1315,15 +1323,13 @@ async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     const source = keepOnSwipe ? sourceBlock : null;
     if (source && !source.failed && typeof source.output === 'string') {
         const record = createPersistedBlock(block, source.output, true);
-        run.records.push(record);
-        if (record.propagate) run.propagated.push(record);
+        addBlockRecord(run, record);
         tracePipeline(run, 'block-reused', { position: block.position, outputLength: record.output.length, ...getChatDiagnostics() });
         return record;
     }
     const output = await generateBlock(run, block, run.propagated);
     const record = createPersistedBlock(block, output, false);
-    run.records.push(record);
-    if (record.propagate) run.propagated.push(record);
+    addBlockRecord(run, record);
     tracePipeline(run, 'block-complete', { position: block.position, outputLength: output.length, ...getChatDiagnostics() });
     return record;
 }
@@ -1335,7 +1341,7 @@ async function executeBlockSafely(run, block, options = {}) {
         if (isAbortError(error)) throw error;
 
         const record = createPersistedBlock(block, '', false, true, true);
-        run.records.push(record);
+        addBlockRecord(run, record);
         tracePipeline(run, 'block-failed', {
             position: block.position,
             blockType: record.type,
@@ -1353,7 +1359,7 @@ async function executePreBlocks(run) {
             const source = findSourceBlock(run, block);
             if (source?.failed) {
                 const record = createPersistedBlock(block, '', false, true, true);
-                run.records.push(record);
+                addBlockRecord(run, record);
                 tracePipeline(run, 'block-skipped-after-failure', { position: block.position, ...getChatDiagnostics() });
                 continue;
             }
@@ -1365,8 +1371,7 @@ async function executePreBlocks(run) {
                 continue;
             }
             const record = createPersistedBlock(block, source.output, true, source.skipped);
-            run.records.push(record);
-            if (record.propagate) run.propagated.push(record);
+            addBlockRecord(run, record);
         }
         return;
     }
@@ -1380,7 +1385,7 @@ async function applyMainState(run) {
         await switchConnectionProfile(run.presetSnapshot.main.connectionProfileId);
     }
     run.mainStateApplied = true;
-    setPipelineContext(run.propagated);
+    setPipelineContext(run.mainPropagated);
 }
 
 function getVisibleAssembly(records, position) {
@@ -1439,11 +1444,6 @@ async function finalizeRun(context) {
         if (!context.isStreaming) {
             const mainEntry = { name: 'MAIN', output: main, propagate: true };
             postEntries.push(mainEntry);
-            // Non-streaming finalization happens before core saves MAIN into
-            // chat. Prompt preview therefore supplies a temporary assistant
-            // message and omits this context-only MAIN entry to avoid adding it
-            // twice under different roles.
-            run.mainPromptPreviewEntry = mainEntry;
         }
         run.mainPromptPreview = {
             type: context.type,
@@ -1518,10 +1518,10 @@ async function prepareRun(type, options, dryRun) {
         const restoreRegeneratedMessage = temporarilyRemoveRegeneratedMessage(run, getContext());
         try {
             // Static PRE conditions can preview the actual MAIN prompt. Apply
-            // the selected MAIN connection state first, then refresh pipeline
-            // context after PRE has produced its propagated entries.
+            // the selected MAIN connection state first, then refresh the
+            // independent MAIN context after PRE has produced its entries.
             await executePreBlocks(run);
-            setPipelineContext(run.propagated);
+            setPipelineContext(run.mainPropagated);
         } finally {
             restoreRegeneratedMessage();
         }
