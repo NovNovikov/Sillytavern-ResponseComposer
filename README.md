@@ -76,6 +76,8 @@ With **Empty Preset**, no Prompt Manager prompt is assembled. The manual options
 
 `Show result to subsequent blocks` makes a block's processed output available as pipeline context to later stages. Any block can test the immediately preceding additional block with a JavaScript RegExp, test whether the assembled MAIN prompt contains case-sensitive text, or run a named Quick Reply and continue only when it returns `true`, `1`, `yes` or `on`. A Generate block whose condition is false makes no LLM request and returns an empty result.
 
+**Invert condition** reverses any condition except **Always**: it runs for an empty preceding block, a non-matching pattern, absent prompt text, or a Quick Reply result other than `true`.
+
 **Prompt contains text** uses Tavern's normal dry-run prompt assembly. A PRE block checks the prompt that MAIN will receive after preceding PRE outputs have been propagated. A POST block checks the prompt that a further MAIN generation would receive at that point, including the current MAIN reply and preceding POST outputs. It does not send a request to the model.
 
 **Use Regex and QR** is the master switch for both behaviours below. When it is enabled, **Apply SillyTavern Regex and before-generation Quick Replies** on a Generate block runs the active Quick Replies marked **Execute before message generation** immediately before Composer assembles that block's request. It uses Tavern's standard Quick Reply lifecycle, so global, chat and character Quick Reply sets follow their ordinary enablement and recursion safeguards.

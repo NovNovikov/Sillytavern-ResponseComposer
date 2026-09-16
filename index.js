@@ -61,6 +61,7 @@ function newBlock(position = 'pre') {
         type: 'generate',
         staticText: '',
         runCondition: 'always',
+        invertCondition: false,
         previousOutputPattern: '',
         promptText: '',
         quickReplySet: '',
@@ -288,6 +289,7 @@ function renderBlock(block, isOpen = false) {
                         <option value="prompt_contains"${runCondition === 'prompt_contains' ? ' selected' : ''}>Prompt contains text</option>
                         <option value="quick_reply"${runCondition === 'quick_reply' ? ' selected' : ''}>Quick Reply returns true</option>
                     </select></label>
+                    <label${runCondition === 'always' ? ' hidden' : ''}><input type="checkbox" data-field="invertCondition"${block.invertCondition ? ' checked' : ''}> Invert condition</label>
                     <label class="stmc-field"${runCondition === 'previous_matches' ? '' : ' hidden'}><span>Previous Output Pattern</span><textarea class="text_pole" data-field="previousOutputPattern" placeholder="JavaScript RegExp">${escapeHtml(block.previousOutputPattern ?? '')}</textarea></label>
                     <label class="stmc-field"${runCondition === 'prompt_contains' ? '' : ' hidden'}><span>Prompt Text</span><textarea class="text_pole" data-field="promptText" placeholder="Case-sensitive text from the assembled MAIN prompt">${escapeHtml(block.promptText ?? '')}</textarea></label>
                     <div class="stmc-grid"${runCondition === 'quick_reply' ? '' : ' hidden'}>
@@ -406,6 +408,7 @@ function normalizeImportedPreset(value) {
         type: block.type === 'static' ? 'static' : 'generate',
         staticText: String(block.staticText ?? ''),
         runCondition: getRunCondition(block),
+        invertCondition: Boolean(block.invertCondition),
         previousOutputPattern: String(block.previousOutputPattern ?? ''),
         promptText: String(block.promptText ?? ''),
         quickReplySet: String(block.quickReplySet ?? ''),
@@ -1184,50 +1187,53 @@ async function getCurrentMainPromptText(run) {
 async function shouldRunBlock(run, block, previousOutput) {
     const condition = getRunCondition(block);
     if (condition === 'always') return true;
-    if (condition === 'previous_nonempty') return Boolean(previousOutput);
-    if (condition === 'previous_matches') {
+    let matched;
+    if (condition === 'previous_nonempty') {
+        matched = Boolean(previousOutput);
+    } else if (condition === 'previous_matches') {
         const pattern = String(block.previousOutputPattern ?? '').trim();
         if (!pattern) {
             throw new Error(`Previous Output Pattern in "${block.name}" is empty.`);
         }
         try {
-            return new RegExp(pattern, 's').test(previousOutput);
+            matched = new RegExp(pattern, 's').test(previousOutput);
         } catch (error) {
             throw new Error(`Previous Output Pattern in "${block.name}" is not a valid regular expression: ${error.message}`);
         }
-    }
-    if (condition === 'prompt_contains') {
+    } else if (condition === 'prompt_contains') {
         const text = String(block.promptText ?? '');
         if (!text) {
             throw new Error(`Prompt Text in "${block.name}" is empty.`);
         }
         const prompt = await getCurrentMainPromptText(run);
-        const matched = prompt.includes(text);
+        matched = prompt.includes(text);
         tracePipeline(run, 'prompt-condition-checked', {
             position: block.position,
             promptLength: prompt.length,
             matched,
+            inverted: Boolean(block.invertCondition),
             ...getChatDiagnostics(),
         });
-        return matched;
+    } else {
+        const setName = String(block.quickReplySet ?? '').trim();
+        const label = String(block.quickReplyLabel ?? '').trim();
+        if (!setName || !label) {
+            throw new Error(`Quick Reply Set and Quick Reply Label are required in "${block.name}".`);
+        }
+        if (typeof globalThis.quickReplyApi?.executeQuickReply !== 'function') {
+            throw new Error('The Quick Replies extension is unavailable. Enable it to use this condition.');
+        }
+        run.currentBlockName = block.name;
+        const result = await globalThis.quickReplyApi.executeQuickReply(setName, label, {
+            previousOutput,
+            blockId: block.id,
+            blockName: block.name,
+            pipelineType: run.type,
+        });
+        assertRunActive(run);
+        matched = quickReplyReturnedTrue(result);
     }
-    const setName = String(block.quickReplySet ?? '').trim();
-    const label = String(block.quickReplyLabel ?? '').trim();
-    if (!setName || !label) {
-        throw new Error(`Quick Reply Set and Quick Reply Label are required in "${block.name}".`);
-    }
-    if (typeof globalThis.quickReplyApi?.executeQuickReply !== 'function') {
-        throw new Error('The Quick Replies extension is unavailable. Enable it to use this condition.');
-    }
-    run.currentBlockName = block.name;
-    const result = await globalThis.quickReplyApi.executeQuickReply(setName, label, {
-        previousOutput,
-        blockId: block.id,
-        blockName: block.name,
-        pipelineType: run.type,
-    });
-    assertRunActive(run);
-    return quickReplyReturnedTrue(result);
+    return block.invertCondition ? !matched : matched;
 }
 
 async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
