@@ -281,7 +281,7 @@ function renderBlock(block, isOpen = false) {
                     <label><input type="checkbox" data-field="propagate"${block.propagate ? ' checked' : ''}> Show result to subsequent blocks</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="keepOnSwipe"${block.keepOnSwipe ? ' checked' : ''}${isDiscard ? ' disabled' : ''}> Do not regenerate on Swipe</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="additionalInstructions.enabled"${instructions.enabled ? ' checked' : ''}> Add additional instructions</label>
-                    <label${isPresetRegexEnabled ? '' : ' hidden'}><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> ${isStatic ? 'Apply SillyTavern Regex' : 'Apply SillyTavern Regex and before-generation Quick Replies'}</label>
+                    <label${isPresetRegexEnabled ? '' : ' hidden'}><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> Apply SillyTavern Regex</label>
                 </div>
                 <div class="stmc-static-fields"${isStatic ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Text</span><textarea class="text_pole" data-field="staticText">${escapeHtml(block.staticText ?? '')}</textarea></label>
@@ -972,30 +972,14 @@ function processBlockPrompt(run, block, prompt) {
     });
 }
 
-function appliesRegexAndQuickReplies(run, block) {
+function appliesRegex(run, block) {
     return Boolean(run.presetSnapshot.useRegex && block.regex?.applySillyTavernRegex);
-}
-
-async function executeBeforeGenerationQuickReplies(run, block) {
-    if (!appliesRegexAndQuickReplies(run, block)) return false;
-
-    // Quick Replies exposes its "Execute before message generation" automation
-    // through Tavern's normal generation lifecycle, not through its public API.
-    // Emitting the same event before assembling this auxiliary request lets the
-    // active global, chat and character QR sets run with their usual safeguards.
-    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, 'quiet', {
-        signal: run.abortSignal ?? null,
-        stMessageConstructor: true,
-        blockId: block.id,
-    }, false);
-    assertRunActive(run);
-    return true;
 }
 
 function processBlockOutput(run, block, rawOutput) {
     let output = removeReasoningFromString(String(rawOutput ?? '')).trim();
     const afterReasoningLength = output.length;
-    if (appliesRegexAndQuickReplies(run, block)) {
+    if (appliesRegex(run, block)) {
         // Match Tavern's normal assistant-response path. Passing isPrompt here
         // selects prompt-only scripts, which may intentionally erase their input.
         output = getRegexedString(output, regex_placement.AI_OUTPUT);
@@ -1019,7 +1003,7 @@ function processBlockOutput(run, block, rawOutput) {
         afterReasoningLength,
         afterRegexLength,
         afterExtractionLength: output.length,
-        regexApplied: appliesRegexAndQuickReplies(run, block),
+        regexApplied: appliesRegex(run, block),
         extractionEnabled: Boolean(extraction),
     });
     return output;
@@ -1030,7 +1014,6 @@ async function generateBlock(run, block, entries) {
     tracePipeline(run, 'auxiliary-start', { position: block.position, ...getChatDiagnostics() });
     auxiliaryDepth++;
     try {
-        const quickReplyLifecycleDispatched = await executeBeforeGenerationQuickReplies(run, block);
         const context = getContext();
         const profile = resolveAuxiliaryProfile(context, block);
         const auxiliaryEntries = run.pendingUserText
@@ -1040,8 +1023,7 @@ async function generateBlock(run, block, entries) {
         const prompt = processBlockPrompt(run, block, rawPrompt);
         tracePipeline(run, 'auxiliary-prompt-processed', {
             position: block.position,
-            regexApplied: appliesRegexAndQuickReplies(run, block),
-            quickReplyLifecycleDispatched,
+            regexApplied: appliesRegex(run, block),
             promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
             ...getChatDiagnostics(),
         });
