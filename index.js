@@ -281,7 +281,7 @@ function renderBlock(block, isOpen = false) {
                     <label><input type="checkbox" data-field="propagate"${block.propagate ? ' checked' : ''}> Show result to subsequent blocks</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="keepOnSwipe"${block.keepOnSwipe ? ' checked' : ''}${isDiscard ? ' disabled' : ''}> Do not regenerate on Swipe</label>
                     <label${isStatic ? ' hidden' : ''}><input type="checkbox" data-field="additionalInstructions.enabled"${instructions.enabled ? ' checked' : ''}> Add additional instructions</label>
-                    <label${isPresetRegexEnabled ? '' : ' hidden'}><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> Apply SillyTavern Regex</label>
+                    <label${isPresetRegexEnabled ? '' : ' hidden'}><input type="checkbox" data-field="regex.applySillyTavernRegex"${block.regex?.applySillyTavernRegex ? ' checked' : ''}> ${isStatic ? 'Apply SillyTavern Regex' : 'Apply SillyTavern Regex and before-generation Quick Replies'}</label>
                 </div>
                 <div class="stmc-static-fields"${isStatic ? '' : ' hidden'}>
                     <label class="stmc-field"><span>Text</span><textarea class="text_pole" data-field="staticText">${escapeHtml(block.staticText ?? '')}</textarea></label>
@@ -972,14 +972,29 @@ function processBlockPrompt(run, block, prompt) {
     });
 }
 
-function appliesRegex(run, block) {
+function appliesRegexAndQuickReplies(run, block) {
     return Boolean(run.presetSnapshot.useRegex && block.regex?.applySillyTavernRegex);
+}
+
+async function executeBeforeGenerationQuickReplies(run, block) {
+    if (!appliesRegexAndQuickReplies(run, block)) return false;
+
+    // Each Generate block is its own generation. Dispatch Tavern's lifecycle
+    // before evaluating its condition, so a QR can set a variable used by that
+    // same block's Run Condition.
+    await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, 'quiet', {
+        signal: run.abortSignal ?? null,
+        stMessageConstructor: true,
+        blockId: block.id,
+    }, false);
+    assertRunActive(run);
+    return true;
 }
 
 function processBlockOutput(run, block, rawOutput) {
     let output = removeReasoningFromString(String(rawOutput ?? '')).trim();
     const afterReasoningLength = output.length;
-    if (appliesRegex(run, block)) {
+    if (appliesRegexAndQuickReplies(run, block)) {
         // Match Tavern's normal assistant-response path. Passing isPrompt here
         // selects prompt-only scripts, which may intentionally erase their input.
         output = getRegexedString(output, regex_placement.AI_OUTPUT);
@@ -1003,7 +1018,7 @@ function processBlockOutput(run, block, rawOutput) {
         afterReasoningLength,
         afterRegexLength,
         afterExtractionLength: output.length,
-        regexApplied: appliesRegex(run, block),
+        regexApplied: appliesRegexAndQuickReplies(run, block),
         extractionEnabled: Boolean(extraction),
     });
     return output;
@@ -1023,7 +1038,7 @@ async function generateBlock(run, block, entries) {
         const prompt = processBlockPrompt(run, block, rawPrompt);
         tracePipeline(run, 'auxiliary-prompt-processed', {
             position: block.position,
-            regexApplied: appliesRegex(run, block),
+            regexApplied: appliesRegexAndQuickReplies(run, block),
             promptKind: Array.isArray(prompt) ? 'chat-completion' : typeof prompt,
             ...getChatDiagnostics(),
         });
@@ -1273,6 +1288,14 @@ async function shouldRunBlock(run, block, previousOutput) {
 async function executeBlock(run, block, { allowSwipeReuse = false } = {}) {
     tracePipeline(run, 'block-start', { position: block.position, blockType: isStaticBlock(block) ? 'static' : 'generate', ...getChatDiagnostics() });
     run.currentBlockName = block.name;
+    const quickReplyLifecycleDispatched = !isStaticBlock(block)
+        ? await executeBeforeGenerationQuickReplies(run, block)
+        : false;
+    tracePipeline(run, 'block-condition-ready', {
+        position: block.position,
+        quickReplyLifecycleDispatched,
+        ...getChatDiagnostics(),
+    });
     const previousOutput = String(run.records.at(-1)?.output ?? '').trim();
     const skipped = !await shouldRunBlock(run, block, previousOutput);
     if (skipped) {
