@@ -267,7 +267,7 @@ function renderBlock(block, isOpen = false) {
                         <option value="generate"${isStatic ? '' : ' selected'}>Generate with LLM</option>
                         <option value="static"${isStatic ? ' selected' : ''}>Static Text</option>
                     </select></label>
-                    <label class="stmc-field"${isStatic ? ' hidden' : ''}><span>Connection Profile</span><select class="text_pole" data-field="connectionProfileId">${profileOptions(block.connectionProfileId)}</select></label>
+                    <label class="stmc-field stmc-profile-field"${isStatic ? ' hidden' : ''}><span>Connection Profile</span><div class="stmc-profile-control"><select class="text_pole" data-field="connectionProfileId">${profileOptions(block.connectionProfileId)}</select><button type="button" class="stmc-profile-apply fa-solid fa-copy" data-action="apply-profile-to-all" aria-label="Apply this Connection Profile to all blocks" title="Apply this Connection Profile to all blocks"></button></div></label>
                     <label class="stmc-field"${isStatic ? ' hidden' : ''}><span>Prompt OAI Preset</span><select class="text_pole" data-field="oaiPresetId">${oaiPresetOptions(block.oaiPresetId)}</select></label>
                     <label class="stmc-field"><span>Visibility</span><select class="text_pole" data-field="visibility">
                         <option value="visible"${block.visibility === 'visible' ? ' selected' : ''}>Visible</option>
@@ -398,6 +398,16 @@ function duplicateBlock(block) {
     preset.blocks.splice(sourceIndex + 1, 0, duplicate);
     saveSettings();
     renderPipeline();
+}
+
+function applyConnectionProfileToAllBlocks(profileId) {
+    const preset = getActivePreset();
+    for (const block of preset.blocks) {
+        block.connectionProfileId = String(profileId ?? '');
+    }
+    saveSettings();
+    renderPipeline();
+    toastr.success('Connection Profile applied to all additional blocks.');
 }
 
 function moveBlock(block, direction) {
@@ -573,6 +583,11 @@ function bindEvents() {
                 renderPipeline();
                 break;
             case 'duplicate': duplicateBlock(block); break;
+            case 'apply-profile-to-all': {
+                const profileId = button.closest('.stmc-profile-field')?.querySelector('[data-field="connectionProfileId"]')?.value;
+                applyConnectionProfileToAllBlocks(profileId);
+                break;
+            }
             case 'move-up': moveBlock(block, -1); break;
             case 'move-down': moveBlock(block, 1); break;
             case 'move-across': moveBlockAcrossMain(block); break;

@@ -33,6 +33,38 @@
     gap: 4px;
 }
 
+#st-message-constructor-panel .stmc-profile-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+#st-message-constructor-panel .stmc-profile-control .text_pole {
+    min-width: 0;
+    flex: 1;
+}
+
+#st-message-constructor-panel .stmc-profile-apply {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 24px;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: var(--black30a, rgba(0, 0, 0, 0.2));
+    color: var(--grey70a, #8a8a8a);
+    cursor: pointer;
+}
+
+#st-message-constructor-panel .stmc-profile-apply:hover {
+    color: var(--SmartThemeBodyColor, #c7d0d9);
+    background: var(--black50a, rgba(0, 0, 0, 0.35));
+}
+
 #st-message-constructor-panel .stmc-pipeline {
     display: grid;
     gap: 4px;
