@@ -663,11 +663,43 @@ function clearPipelineContext(key = PIPELINE_PROMPT_KEY) {
 }
 
 function isAbortError(error) {
-    return error?.name === 'AbortError' || /abort|cancel/i.test(String(error?.message ?? error ?? ''));
+    // Connection Manager wraps fetch failures in a generic Error and retains
+    // the original AbortError in `cause`. Follow that chain so a cancelled
+    // auxiliary request is never treated as a normal block failure.
+    const seen = new Set();
+    let current = error;
+    while (current && !seen.has(current)) {
+        if (typeof current === 'object') seen.add(current);
+        if (current?.name === 'AbortError' || /abort|cancel/i.test(String(current?.message ?? current))) {
+            return true;
+        }
+        current = current?.cause;
+    }
+    return false;
+}
+
+function abortRun(run, reason = 'Multi-stage generation was aborted.') {
+    if (!run) return;
+    run.aborted = true;
+    if (!run.abortController.signal.aborted) {
+        run.abortController.abort(new DOMException(String(reason), 'AbortError'));
+    }
+}
+
+function linkRunAbortSignal(run, signal) {
+    if (!signal || signal === run.externalAbortSignal) return;
+    run.externalAbortSignal = signal;
+    if (signal.aborted) {
+        abortRun(run, signal.reason ?? 'Generation was aborted.');
+        return;
+    }
+    signal.addEventListener('abort', () => {
+        abortRun(run, signal.reason ?? 'Generation was aborted.');
+    }, { once: true });
 }
 
 function assertRunActive(run) {
-    if (run !== activeRun || run.aborted) {
+    if (run !== activeRun || run.aborted || run.abortController.signal.aborted) {
         throw new DOMException('Multi-stage generation was aborted.', 'AbortError');
     }
 }
@@ -795,9 +827,12 @@ function createRun(type, options = {}) {
         },
         mainStateApplied: false,
         aborted: false,
+        abortController: new AbortController(),
+        externalAbortSignal: null,
         finalized: false,
         continueMessage: null,
     };
+    linkRunAbortSignal(run, options.signal);
     lastDiagnosticRun = run;
     tracePipeline(run, 'run-created', {
         type,
@@ -1014,7 +1049,7 @@ async function executeBeforeGenerationQuickReplies(run, block) {
     // before evaluating its condition, so a QR can set a variable used by that
     // same block's Run Condition.
     await eventSource.emit(event_types.GENERATION_AFTER_COMMANDS, 'quiet', {
-        signal: run.abortSignal ?? null,
+        signal: run.abortController.signal,
         stMessageConstructor: true,
         blockId: block.id,
     }, false);
@@ -1097,7 +1132,7 @@ async function generateBlock(run, block, entries) {
                 undefined,
                 {
                     stream: false,
-                    signal: run.abortSignal ?? null,
+                    signal: run.abortController.signal,
                     extractData: true,
                     // Do not override profile.preset. Connection Manager applies
                     // that preset to the request, including custom_include_body.
@@ -1462,7 +1497,7 @@ async function finalizeRun(context) {
     const run = activeRun;
     if (!run || run.finalized || run.type !== context.type) return undefined;
     run.finalized = true;
-    run.abortSignal = context.abortSignal;
+    linkRunAbortSignal(run, context.abortSignal);
     tracePipeline(run, 'finalizer-enter', {
         type: context.type,
         streaming: context.isStreaming,
@@ -1564,14 +1599,24 @@ async function prepareRun(type, options, dryRun) {
         tracePipeline(run, 'pre-complete', { ...getChatDiagnostics() });
         tracePipeline(run, 'main-context-ready', { ...getChatDiagnostics() });
     } catch (error) {
-        tracePipeline(run, 'prepare-failed', { ...getErrorDiagnostics(error), ...getChatDiagnostics() });
-        if (!isAbortError(error)) {
+        const aborted = isAbortError(error);
+        tracePipeline(run, aborted ? 'prepare-aborted' : 'prepare-failed', { ...getErrorDiagnostics(error), ...getChatDiagnostics() });
+        if (!aborted) {
             toastr.error(`Multi-Stage Composer: PRE block failed: ${error.message || error}`);
         }
         if (run.continueMessage) run.continueMessage.message.mes = run.continueMessage.mes;
         clearPipelineContext();
         await restoreTavernState(run.originalState);
         activeRun = null;
+        if (aborted) {
+            // GENERATION_BEFORE_MAIN runs before core enters its normal
+            // finishGenerating()/onError cleanup. Returning an AbortError
+            // from here strands its Generate/Stop controls. Core's own
+            // request is already aborted by Stop; restore the UI now and let
+            // that request settle through its regular abort path.
+            getContext().activateSendButtons?.();
+            return;
+        }
         throw error;
     }
 }
@@ -1583,7 +1628,7 @@ function installPipelineRuntime() {
     eventSource.on(event_types.GENERATION_STOPPED, () => {
         if (activeRun) {
             tracePipeline(activeRun, 'generation-stopped', getChatDiagnostics());
-            activeRun.aborted = true;
+            abortRun(activeRun, 'Stopped by user.');
         }
     });
     eventSource.on(event_types.MESSAGE_RECEIVED, (messageId, type) => {
