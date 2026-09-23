@@ -834,7 +834,9 @@ async function getWorldbookText(context) {
         .map(message => String(message.mes ?? ''))
         .reverse();
     const result = await getWorldInfoPrompt(scanChat, getMaxContextTokens(), false, { trigger: 'normal' });
-    return [result?.worldInfoBefore, result?.worldInfoString, result?.worldInfoAfter]
+    // Tavern's worldInfoString is already worldInfoBefore + worldInfoAfter.
+    // Adding all three duplicates every Worldbook entry in Empty Preset blocks.
+    return [result?.worldInfoBefore, result?.worldInfoAfter]
         .map(value => String(value ?? '').trim())
         .filter(Boolean)
         .join('\n\n');
