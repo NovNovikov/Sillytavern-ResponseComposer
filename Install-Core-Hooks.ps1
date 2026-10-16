@@ -53,6 +53,15 @@ function Test-CoreHooksInstalled {
     return $script.Contains('const promptHistory = history.filter(message => !message?.is_system || (canUseTools && Array.isArray(message.extra?.tool_invocations)));')
 }
 
+function Test-GeneratedSwipePreparationHookInstalled {
+    param([string]$Root)
+
+    $script = Get-Content (Join-Path $Root 'public\script.js') -Raw
+    $events = Get-Content (Join-Path $Root 'public\scripts\events.js') -Raw
+    return $script.Contains('Tavern reserves its new, still-unsaved swipe slot') -and
+        $events.Contains("GENERATION_BEFORE_SWIPE: 'generation_before_swipe'")
+}
+
 try {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         throw 'Git was not found. Install Git for Windows, then run this installer again.'
@@ -67,7 +76,7 @@ try {
         throw 'The selected folder is not a SillyTavern Git checkout with public\\script.js.'
     }
 
-    if (Test-CoreHooksInstalled $SillyTavernPath) {
+    if ((Test-CoreHooksInstalled $SillyTavernPath) -and (Test-GeneratedSwipePreparationHookInstalled $SillyTavernPath)) {
         Write-Host 'Multi-Stage Response Composer core hooks are already installed.' -ForegroundColor Green
         exit 0
     }
@@ -80,8 +89,13 @@ try {
     # A checkout with the original hook series only needs the incremental
     # update. Reapplying the whole series would make git am reject commits
     # that are already present.
-    if (Test-CoreBaseHooksInstalled $SillyTavernPath) {
+    if (Test-CoreHooksInstalled $SillyTavernPath) {
+        # Existing installations already contain patches 0001–0011. Apply
+        # only the current incremental hook rather than replaying the series.
+        $patches = @($patches | Where-Object { $_.Name -like '0012-*' })
+    } elseif (Test-CoreBaseHooksInstalled $SillyTavernPath) {
         $patches = @($patches | Where-Object { $_.Name -like '0011-*' })
+        $patches += @((Get-ChildItem $patchDirectory -Filter '0012-*.patch' -File | Sort-Object Name))
     }
     if ($patches.Count -eq 0) {
         throw 'No applicable core patch was found for this checkout.'
@@ -114,7 +128,7 @@ try {
         throw 'The core patches could not be applied. The installer restored the checkout without applying them.'
     }
 
-    if (-not (Test-CoreHooksInstalled $SillyTavernPath)) {
+    if ((-not (Test-CoreHooksInstalled $SillyTavernPath)) -or (-not (Test-GeneratedSwipePreparationHookInstalled $SillyTavernPath))) {
         throw 'Git applied the patches, but the required core hooks were not found afterwards.'
     }
 

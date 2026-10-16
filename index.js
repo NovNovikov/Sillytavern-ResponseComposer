@@ -1640,9 +1640,17 @@ async function prepareRun(type, options, dryRun) {
     }
 }
 
+async function prepareGeneratedSwipe({ sourceSwipeId } = {}) {
+    // Main-profile activation can trigger a chat reload through a profile's
+    // regex preset. This runs before core reserves the new swipe slot, so that
+    // reload cannot discard the pending slot or restore the prior swipe.
+    await prepareRun('swipe', { sourceSwipeId }, false);
+}
+
 function installPipelineRuntime() {
     unregisterFinalizer?.();
     unregisterFinalizer = registerGenerationFinalizer(finalizeRun);
+    eventSource.on(event_types.GENERATION_BEFORE_SWIPE, prepareGeneratedSwipe);
     eventSource.on(event_types.GENERATION_BEFORE_MAIN, prepareRun);
     eventSource.on(event_types.GENERATION_STOPPED, () => {
         if (activeRun) {
