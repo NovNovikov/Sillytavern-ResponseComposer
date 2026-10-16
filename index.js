@@ -188,6 +188,19 @@ function getChatDiagnostics(messageId = null) {
     };
 }
 
+function getSwipeDiagnostics() {
+    const chat = getContext().chat ?? [];
+    const message = chat.at(-1);
+    const swipeId = Number.isInteger(message?.swipe_id) ? message.swipe_id : null;
+    const swipes = Array.isArray(message?.swipes) ? message.swipes : [];
+    return {
+        swipeId,
+        swipeCount: swipes.length,
+        activeSwipeExists: swipeId !== null ? typeof swipes[swipeId] === 'string' : false,
+        activeSwipeLength: swipeId !== null && typeof swipes[swipeId] === 'string' ? swipes[swipeId].length : undefined,
+    };
+}
+
 function renderDiagnostics() {
     const output = getPanel()?.querySelector('#stmc-diagnostics-output');
     if (!output) return;
@@ -1452,8 +1465,14 @@ async function executePreBlocks(run) {
 }
 
 async function applyMainState(run) {
+    if (run.type === 'swipe') {
+        tracePipeline(run, 'swipe-before-main-profile', getSwipeDiagnostics());
+    }
     if (run.presetSnapshot.main?.connectionProfileId) {
         await switchConnectionProfile(run.presetSnapshot.main.connectionProfileId);
+    }
+    if (run.type === 'swipe') {
+        tracePipeline(run, 'swipe-after-main-profile', getSwipeDiagnostics());
     }
     run.mainStateApplied = true;
     setPipelineContext(run.mainPropagated);
