@@ -1656,6 +1656,15 @@ function installPipelineRuntime() {
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId, type) => {
         tracePipeline(null, 'message-rendered', { type, ...getChatDiagnostics(messageId) });
     });
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        const run = activeRun ?? lastDiagnosticRun;
+        if (run?.type !== 'swipe') return;
+        tracePipeline(run, 'chat-changed-during-swipe', {
+            finalized: Boolean(run.finalized),
+            ...getChatDiagnostics(),
+            ...getSwipeDiagnostics(),
+        });
+    });
     eventSource.on(event_types.MESSAGE_DELETED, () => {
         const stack = String(new Error().stack ?? '').split('\n').slice(1, 4).map(line => line.trim()).join(' | ');
         tracePipeline(null, 'message-deleted', { ...getChatDiagnostics(), stack });
