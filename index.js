@@ -1678,8 +1678,17 @@ function installPipelineRuntime() {
         const restores = pendingStateRestores;
         pendingStateRestores = [];
         for (const restore of restores) {
-            tracePipeline(lastDiagnosticRun, 'state-restore-after-save', { diagnosticId: restore.diagnosticId, ...getChatDiagnostics() });
+            tracePipeline(lastDiagnosticRun, 'state-restore-after-save-before', {
+                diagnosticId: restore.diagnosticId,
+                ...getChatDiagnostics(),
+                ...getSwipeDiagnostics(),
+            });
             await restoreTavernState(restore.snapshot);
+            tracePipeline(lastDiagnosticRun, 'state-restore-after-save-complete', {
+                diagnosticId: restore.diagnosticId,
+                ...getChatDiagnostics(),
+                ...getSwipeDiagnostics(),
+            });
         }
     });
 }
